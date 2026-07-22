@@ -50,17 +50,23 @@ class Series:
     verify_id: bool = False   # True => confirm the exact FRED id before real fetch
 
 
-# v1 EUR/USD slice. Each yield leg is stored separately; dbt computes the
-# Bund-Treasury differentials. IDs flagged verify_id=True should be confirmed
-# against FRED when the real key is wired in (synthetic mode ignores this).
+# v1 EUR/USD slice. Only series confirmed against FRED are fetched, so a real
+# run never 400s on an unverified id. Each yield leg is stored separately; dbt
+# computes the Bund-Treasury differentials once the legs are ingested.
 SERIES: list[Series] = [
-    Series("DEXUSEU",           "fred", "daily",   "eurusd_spot"),
-    Series("ECBDFR",            "fred", "daily",   "ecb_policy_rate", verify_id=True),
-    Series("DFF",               "fred", "daily",   "fed_funds_rate"),
-    Series("DGS2",              "fred", "daily",   "us_2y"),
-    Series("DGS10",             "fred", "daily",   "us_10y"),
-    Series("IRLTLT01DEM156N",   "fred", "monthly", "de_10y",          verify_id=True),
-    Series("DE2YT_PLACEHOLDER", "fred", "daily",   "de_2y",           verify_id=True),
+    Series("DEXUSEU",  "fred", "daily",   "eurusd_spot"),     # EUR/USD spot
+    Series("FEDFUNDS", "fred", "monthly", "fed_funds_rate"),  # effective fed funds (monthly)
+]
+
+# Spec'd but awaiting the user's confirmed FRED calls. To light up the ecb-rate /
+# yield-differential columns: move a series into SERIES above and add the matching
+# series_id branch in dbt/models/intermediate/int_daily_panel.sql.
+PENDING_SERIES: list[Series] = [
+    Series("ECBDFR",          "fred", "daily",   "ecb_policy_rate", verify_id=True),
+    Series("DGS2",            "fred", "daily",   "us_2y"),
+    Series("DGS10",           "fred", "daily",   "us_10y"),
+    Series("IRLTLT01DEM156N", "fred", "monthly", "de_10y",          verify_id=True),
+    # German 2Y (de_2y): no clean daily FRED series identified yet.
 ]
 
 
