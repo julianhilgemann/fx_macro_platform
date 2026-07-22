@@ -34,6 +34,10 @@ FRED_BASE_URL = "https://api.stlouisfed.org/fred/series/observations"
 # most recently issued German federal securities). No key required.
 BUNDESBANK_BASE_URL = "https://api.statistiken.bundesbank.de/rest/data/BBSSY"
 
+# Source #3: ECB Data Portal (SDW) SDMX REST API. No key required. A series'
+# provider_key includes the dataset, e.g. "FM/B.U2.EUR.4F.KR.MRR_FR.LEV".
+ECB_SDW_BASE_URL = "https://data-api.ecb.europa.eu/service/data"
+
 # "synthetic" needs no key and generates deterministic FRED-shaped data so the
 # whole pipeline runs end-to-end. "fred" hits the real API.
 FETCH_MODE: str = os.getenv("FX_FETCH_MODE") or ("fred" if FRED_API_KEY else "synthetic")
@@ -64,11 +68,28 @@ class Series:
 # Bundesbank (true daily German Bund yields — FRED has no clean daily German 2Y).
 # Each yield leg is stored separately; dbt computes the differentials.
 SERIES: list[Series] = [
+    # --- spot + FX context (FRED) ---
     Series("DEXUSEU",  "fred", "daily",   "eurusd_spot"),      # EUR/USD spot
+    Series("DTWEXBGS", "fred", "daily",   "usd_broad_index"),  # nominal broad USD index (2006+)
+    Series("VIXCLS",   "fred", "daily",   "vix"),              # CBOE VIX (risk sentiment)
+
+    # --- US policy corridor (FRED): target range mirrors the ECB corridor ---
     Series("FEDFUNDS", "fred", "monthly", "fed_funds_rate"),   # effective fed funds (monthly)
-    Series("ECBDFR",   "fred", "daily",   "ecb_policy_rate"),  # ECB deposit facility rate (daily)
+    Series("DFEDTARU", "fred", "daily",   "fed_target_upper"), # fed funds target range upper
+    Series("DFEDTARL", "fred", "daily",   "fed_target_lower"), # fed funds target range lower
+
+    # --- ECB policy corridor: DFR floor (FRED) + MRO mid + MLF ceiling (ECB SDW) ---
+    Series("ECBDFR",   "fred", "daily",   "ecb_policy_rate"),  # deposit facility rate (floor)
+    Series("ECB_MRO",  "ecb",  "daily",   "ecb_mro_rate",
+           provider_key="FM/B.U2.EUR.4F.KR.MRR_FR.LEV"),       # main refinancing, fixed rate (mid)
+    Series("ECB_MLF",  "ecb",  "daily",   "ecb_mlf_rate",
+           provider_key="FM/B.U2.EUR.4F.KR.MLFR.LEV"),         # marginal lending facility (ceiling)
+
+    # --- US Treasury yields (FRED) ---
     Series("DGS2",     "fred", "daily",   "us_2y"),            # US 2Y Treasury (daily)
     Series("DGS10",    "fred", "daily",   "us_10y"),           # US 10Y Treasury (daily)
+
+    # --- German Bund yields (Bundesbank BBSSY, daily) ---
     Series("DE2Y",  "bundesbank", "daily", "de_2y",
            provider_key="D.REN.EUR.A610.000000WT0202.A"),      # German 2Y Bund (daily, from 2014)
     Series("DE10Y", "bundesbank", "daily", "de_10y",

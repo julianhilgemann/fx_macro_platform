@@ -27,14 +27,26 @@ class SeriesPoint(BaseModel):
 class PanelRow(BaseModel):
     reference_period: date
     eurusd_spot: float | None = None
+    usd_broad_index: float | None = None
+    vix: float | None = None
+    # ECB corridor (ceiling / mid / floor)
+    ecb_mlf_rate: float | None = None
+    ecb_mro_rate: float | None = None
     ecb_policy_rate: float | None = None
+    # Fed corridor (range + effective)
+    fed_target_upper: float | None = None
+    fed_target_lower: float | None = None
     fed_funds_rate: float | None = None
+    # yield legs
     us_2y: float | None = None
     us_10y: float | None = None
     de_2y: float | None = None
     de_10y: float | None = None
+    # differentials & curve slopes
     diff_2y: float | None = None
     diff_10y: float | None = None
+    us_2s10s: float | None = None
+    de_2s10s: float | None = None
     policy_rate_spread: float | None = None
 
 

@@ -15,6 +15,7 @@ import requests
 
 from ingest.config import (
     BUNDESBANK_BASE_URL,
+    ECB_SDW_BASE_URL,
     FETCH_MODE,
     FRED_API_KEY,
     FRED_BASE_URL,
@@ -59,7 +60,19 @@ def fetch_bundesbank(series: Series) -> tuple[str, str]:
     return resp.text, "csv"
 
 
-REAL_CLIENTS = {"fred": fetch_fred, "bundesbank": fetch_bundesbank}
+def fetch_ecb(series: Series) -> tuple[str, str]:
+    # series.key includes the dataset, e.g. "FM/B.U2.EUR.4F.KR.MRR_FR.LEV".
+    url = f"{ECB_SDW_BASE_URL}/{series.key}"
+    resp = requests.get(
+        url,
+        params={"startPeriod": HISTORY_START.isoformat(), "format": "csvdata"},
+        timeout=30,
+    )
+    resp.raise_for_status()
+    return resp.text, "csv"
+
+
+REAL_CLIENTS = {"fred": fetch_fred, "bundesbank": fetch_bundesbank, "ecb": fetch_ecb}
 
 
 # --- synthetic (FRED-shaped JSON, any source) -----------------------------
@@ -84,16 +97,22 @@ def _month_ends(start: date, end: date):
 
 # role -> (level, daily vol) for mean-reverting random walks
 _SYNTH_LEVELS = {
-    "eurusd_spot": (1.08, 0.004),
-    "us_2y":       (4.30, 0.03),
-    "us_10y":      (4.20, 0.03),
-    "de_2y":       (2.70, 0.03),
-    "de_10y":      (2.40, 0.03),
+    "eurusd_spot":     (1.08, 0.004),
+    "usd_broad_index": (120.0, 0.3),
+    "vix":             (18.0, 1.0),
+    "us_2y":           (4.30, 0.03),
+    "us_10y":          (4.20, 0.03),
+    "de_2y":           (2.70, 0.03),
+    "de_10y":          (2.40, 0.03),
 }
 # role -> starting policy rate (step functions)
 _SYNTH_RATES = {
-    "ecb_policy_rate": 3.75,
-    "fed_funds_rate":  4.33,
+    "ecb_policy_rate":  3.75,   # DFR (floor)
+    "ecb_mro_rate":     4.00,   # MRO (mid)
+    "ecb_mlf_rate":     4.25,   # MLF (ceiling)
+    "fed_funds_rate":   4.33,
+    "fed_target_lower": 4.25,
+    "fed_target_upper": 4.50,
 }
 
 
