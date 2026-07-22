@@ -1,0 +1,10 @@
+# dbt-duckdb profile. DUCKDB_PATH is exported by scripts/run_pipeline.sh so the
+# loader and dbt always target the same file. The fallback is relative to the
+# repo root (dbt is invoked with --project-dir dbt from there).
+fx_macro:
+  target: dev
+  outputs:
+    dev:
+      type: duckdb
+      path: "{{ env_var('DUCKDB_PATH', 'warehouse/fx_macro.duckdb') }}"
+      threads: 4
