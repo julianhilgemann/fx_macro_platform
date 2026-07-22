@@ -1,0 +1,21 @@
+version: 2
+
+models:
+  - name: mart_eurusd_panel
+    description: "Curated daily EUR/USD + rate/yield differential panel (API contract)."
+    columns:
+      - name: reference_period
+        description: "One row per calendar day; the panel grain."
+        tests:
+          - unique
+          - not_null
+
+  - name: mart_series
+    description: "Long-format latest-vintage series values (API contract)."
+    columns:
+      - name: series_id
+        tests: [not_null]
+      - name: reference_period
+        tests: [not_null]
+      - name: value
+        tests: [not_null]
