@@ -1,6 +1,6 @@
 from datetime import date, datetime, timezone
 
-from ingest.parse import Observation, parse_response
+from ingest.parse import Observation, parse_bundesbank_csv, parse_response
 
 
 def _payload() -> dict:
@@ -43,8 +43,42 @@ def test_parse_response_empty():
     records = parse_response(
         {"observations": []},
         source="fred",
-        series_id="DFF",
+        series_id="FEDFUNDS",
         fetch_timestamp=ts,
         raw_file="x.json",
     )
     assert records == []
+
+
+# A trimmed real Bundesbank BBSSY CSV: metadata header rows, then data rows,
+# with "." for a missing observation.
+_BBK_CSV = (
+    '"",BBSSY.D.REN.EUR.A610.000000WT0202.A,BBSSY.D.REN.EUR.A610.000000WT0202.A_FLAGS\n'
+    '"",Daily yield of the current (two-year) Federal Treasury notes,\n'
+    "Decimals,2,\n"
+    "unit,PROZENT,\n"
+    "2014-01-02,0.21,\n"
+    "2014-01-04,.,No value available\n"
+    "2026-07-22,2.81,\n"
+)
+
+
+def test_parse_bundesbank_csv_skips_headers_and_missing():
+    ts = datetime(2026, 7, 22, 6, 0, 0, tzinfo=timezone.utc)
+    records = parse_bundesbank_csv(
+        _BBK_CSV,
+        source="bundesbank",
+        series_id="DE2Y",
+        fetch_timestamp=ts,
+        raw_file="raw/bundesbank/DE2Y/2026-07-22T06:00:00.000000Z.csv",
+    )
+
+    # Only the 3 date-led rows become records; metadata rows are skipped.
+    assert len(records) == 3
+    assert all(isinstance(r, Observation) for r in records)
+    assert records[0].source == "bundesbank"
+    assert records[0].reference_period == date(2014, 1, 2)
+    assert records[0].value == 0.21
+    assert records[1].value is None            # "." -> missing
+    assert records[2].reference_period == date(2026, 7, 22)
+    assert records[2].value == 2.81

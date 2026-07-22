@@ -4,15 +4,25 @@ Point-in-time macro/FX data platform. Ingests FRED/ALFRED data, stores it
 **append-only as as-reported vintages**, transforms with dbt, and serves curated
 dataframes over FastAPI.
 
-This is the **v1 vertical slice**: one pair (EUR/USD), one source (FRED), ~5–7
-series, running one thread end to end — `fetch → immutable raw → load → DuckDB →
-dbt → API`. See [`fx-macro-platform-spec.md`](fx-macro-platform-spec.md) for the
-full blueprint and [`docs/architecture.md`](docs/architecture.md) for the data flow.
+This is the **v1 vertical slice**: one pair (EUR/USD), two sources (FRED +
+Bundesbank), 7 series, running one thread end to end — `fetch → immutable raw →
+load → DuckDB → dbt → API`. See [`fx-macro-platform-spec.md`](fx-macro-platform-spec.md)
+for the full blueprint and [`docs/architecture.md`](docs/architecture.md) for the data flow.
 
-> **Runs with no API key today.** `FX_FETCH_MODE=synthetic` (the default when no
-> `FRED_API_KEY` is set) generates deterministic FRED-shaped data so the whole
-> pipeline stands up end-to-end. Swap in a real key to switch to live FRED — no
-> downstream code changes.
+**Series** (each yield leg stored separately; dbt computes the differentials):
+
+| Role | Series | Source | Freq |
+|------|--------|--------|------|
+| EUR/USD spot | `DEXUSEU` | FRED | daily |
+| Fed funds rate | `FEDFUNDS` | FRED | monthly |
+| ECB deposit rate | `ECBDFR` | FRED | daily |
+| US 2Y / 10Y Treasury | `DGS2` / `DGS10` | FRED | daily |
+| German 2Y / 10Y Bund | `DE2Y` / `DE10Y` | Bundesbank (BBSSY) | daily |
+
+> **Two fetch modes.** With `FRED_API_KEY` set and `FX_FETCH_MODE=fred`, fetch
+> hits the live APIs (FRED needs the key; Bundesbank needs none). With no key,
+> `FX_FETCH_MODE=synthetic` generates deterministic FRED-shaped data so the whole
+> pipeline still stands up end-to-end. Same raw → load → dbt → API path either way.
 
 ## Prerequisites
 
@@ -25,15 +35,15 @@ uv sync                 # creates .venv, installs pinned deps + the project
 cp .env.example .env    # optional; defaults already run in synthetic mode
 ```
 
-## Run the pipeline (synthetic data)
+## Run the pipeline
 
 ```bash
 ./scripts/run_pipeline.sh
 ```
 
-This fetches all series to immutable raw JSON, loads DuckDB, then runs `dbt run`
-+ `dbt test`. Re-running creates **new** raw records (new `fetch_timestamp`)
-without overwriting or duplicating prior grain.
+This fetches all series to immutable raw files (FRED → JSON, Bundesbank → CSV),
+loads DuckDB, then runs `dbt run` + `dbt test`. Re-running creates **new** raw
+records (new `fetch_timestamp`) without overwriting or duplicating prior grain.
 
 ## Serve the API
 
@@ -59,23 +69,26 @@ Interactive docs at <http://127.0.0.1:8000/docs>.
 uv run pytest
 ```
 
-## Switching to real FRED
+## Data sources
 
-1. Get a free key: <https://fred.stlouisfed.org/docs/api/api_key.html>
-2. In `.env`: set `FRED_API_KEY=...` and `FX_FETCH_MODE=fred`.
-3. Confirm the series IDs flagged `verify_id=True` in
-   [`ingest/config.py`](ingest/config.py) (ECB rate, German 2Y/10Y — the German
-   2Y is a placeholder pending the exact FRED id).
-4. `./scripts/run_pipeline.sh`
+- **FRED** (spot, US rates/yields, ECB rate) — free key required:
+  <https://fred.stlouisfed.org/docs/api/api_key.html>. Put it in `.env` as
+  `FRED_API_KEY` with `FX_FETCH_MODE=fred`.
+- **Bundesbank** (daily German 2Y/10Y Bund yields, BBSSY flow) — no key. FRED has
+  no clean daily German 2Y, so this is the second source and the multi-source proof.
+
+Adding a series: append it to `SERIES` in [`ingest/config.py`](ingest/config.py)
+(with a `provider_key` if the source's id differs) and add its `series_id` branch
+to the panel pivot in `dbt/models/intermediate/int_daily_panel.sql`.
 
 ## Layout
 
 ```
-ingest/     config (series registry) · fetch (raw JSON) · parse (Pydantic) · load (DuckDB)
+ingest/     config (series registry) · fetch (FRED json / Bundesbank csv) · parse · load (DuckDB)
 dbt/        staging → intermediate → mart, with tests
 api/        FastAPI, reads mart only
-raw/        append-only JSON store        (gitignored)
-warehouse/  fx_macro.duckdb               (gitignored)
+raw/        append-only raw store (JSON + CSV)  (gitignored)
+warehouse/  fx_macro.duckdb                      (gitignored)
 scripts/    run_pipeline.sh — the cron target
 ```
 

@@ -14,6 +14,9 @@ import polars as pl
 from ingest.config import DUCKDB_PATH, RAW_DIR, RAW_TABLE
 from ingest.parse import Observation, parse_file
 
+# Raw file formats the parser can handle (FRED = json, Bundesbank = csv).
+LOADABLE_SUFFIXES = {".json", ".csv"}
+
 DDL = f"""
 CREATE TABLE IF NOT EXISTS {RAW_TABLE} (
     source            VARCHAR   NOT NULL,
@@ -53,7 +56,7 @@ def _records_to_df(records: list[Observation], loaded_at: datetime) -> pl.DataFr
 
 
 def run() -> int:
-    files = sorted(RAW_DIR.rglob("*.json"))
+    files = sorted(p for p in RAW_DIR.rglob("*") if p.suffix in LOADABLE_SUFFIXES)
     records: list[Observation] = []
     for f in files:
         records.extend(parse_file(f))

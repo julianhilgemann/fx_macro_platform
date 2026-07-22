@@ -30,6 +30,10 @@ DUCKDB_PATH: Path = _path_env("DUCKDB_PATH", REPO_ROOT / "warehouse" / "fx_macro
 FRED_API_KEY: str | None = os.getenv("FRED_API_KEY") or None
 FRED_BASE_URL = "https://api.stlouisfed.org/fred/series/observations"
 
+# Source #2: Bundesbank statistics REST API (BBSSY flow = daily yields of the
+# most recently issued German federal securities). No key required.
+BUNDESBANK_BASE_URL = "https://api.statistiken.bundesbank.de/rest/data/BBSSY"
+
 # "synthetic" needs no key and generates deterministic FRED-shaped data so the
 # whole pipeline runs end-to-end. "fred" hits the real API.
 FETCH_MODE: str = os.getenv("FX_FETCH_MODE") or ("fred" if FRED_API_KEY else "synthetic")
@@ -43,31 +47,38 @@ RAW_TABLE = "raw_observations"
 
 @dataclass(frozen=True)
 class Series:
-    series_id: str            # FRED/ALFRED series id
-    source: str               # e.g. "fred"
+    series_id: str            # stable, readable id (used in raw path + dbt pivot)
+    source: str               # "fred" | "bundesbank"
     frequency: str            # "daily" (business days) | "monthly"
     role: str                 # stable panel column name (dbt pivots on this)
-    verify_id: bool = False   # True => confirm the exact FRED id before real fetch
+    provider_key: str = ""    # provider's own key if it differs from series_id
+    verify_id: bool = False   # True => confirm the exact id before real fetch
+
+    @property
+    def key(self) -> str:
+        """The identifier the provider's API expects."""
+        return self.provider_key or self.series_id
 
 
-# v1 EUR/USD slice. Only series confirmed against FRED are fetched, so a real
-# run never 400s on an unverified id. Each yield leg is stored separately; dbt
-# computes the Bund-Treasury differentials once the legs are ingested.
+# v1 EUR/USD slice. Two sources: FRED (spot, US rates/yields, ECB rate) and the
+# Bundesbank (true daily German Bund yields — FRED has no clean daily German 2Y).
+# Each yield leg is stored separately; dbt computes the differentials.
 SERIES: list[Series] = [
-    Series("DEXUSEU",  "fred", "daily",   "eurusd_spot"),     # EUR/USD spot
-    Series("FEDFUNDS", "fred", "monthly", "fed_funds_rate"),  # effective fed funds (monthly)
+    Series("DEXUSEU",  "fred", "daily",   "eurusd_spot"),      # EUR/USD spot
+    Series("FEDFUNDS", "fred", "monthly", "fed_funds_rate"),   # effective fed funds (monthly)
+    Series("ECBDFR",   "fred", "daily",   "ecb_policy_rate"),  # ECB deposit facility rate (daily)
+    Series("DGS2",     "fred", "daily",   "us_2y"),            # US 2Y Treasury (daily)
+    Series("DGS10",    "fred", "daily",   "us_10y"),           # US 10Y Treasury (daily)
+    Series("DE2Y",  "bundesbank", "daily", "de_2y",
+           provider_key="D.REN.EUR.A610.000000WT0202.A"),      # German 2Y Bund (daily, from 2014)
+    Series("DE10Y", "bundesbank", "daily", "de_10y",
+           provider_key="D.REN.EUR.A630.000000WT1010.A"),      # German 10Y Bund (daily)
 ]
 
-# Spec'd but awaiting the user's confirmed FRED calls. To light up the ecb-rate /
-# yield-differential columns: move a series into SERIES above and add the matching
-# series_id branch in dbt/models/intermediate/int_daily_panel.sql.
-PENDING_SERIES: list[Series] = [
-    Series("ECBDFR",          "fred", "daily",   "ecb_policy_rate", verify_id=True),
-    Series("DGS2",            "fred", "daily",   "us_2y"),
-    Series("DGS10",           "fred", "daily",   "us_10y"),
-    Series("IRLTLT01DEM156N", "fred", "monthly", "de_10y",          verify_id=True),
-    # German 2Y (de_2y): no clean daily FRED series identified yet.
-]
+# Nothing parked right now. Add future series (e.g. ECB SDW as source #3) here,
+# then wire the matching series_id branch in
+# dbt/models/intermediate/int_daily_panel.sql.
+PENDING_SERIES: list[Series] = []
 
 
 def series_by_id(series_id: str) -> Series | None:
