@@ -2,7 +2,7 @@ version: 2
 
 sources:
   - name: raw
-    description: "Append-only, point-in-time observations (FRED + Bundesbank) landed by the loader."
+    description: "Append-only, point-in-time observations (FRED + Bundesbank + ECB SDW) landed by the loader."
     schema: main
     tables:
       - name: raw_observations

@@ -96,6 +96,38 @@ def parse_bundesbank_csv(
     return records
 
 
+def parse_ecb_sdmx_csv(
+    text: str,
+    *,
+    source: str,
+    series_id: str,
+    fetch_timestamp: datetime,
+    raw_file: str,
+) -> list[Observation]:
+    """Pure parser: an ECB Data Portal (SDW) `csvdata` body -> validated records.
+
+    Wide SDMX CSV with a header row; the observation columns are TIME_PERIOD and
+    OBS_VALUE. Key ECB rate series are change-point (one row per rate change) —
+    the daily panel forward-fills them into step functions.
+    """
+    records: list[Observation] = []
+    for row in csv.DictReader(io.StringIO(text)):
+        period = (row.get("TIME_PERIOD") or "").strip()
+        if not _ISO_DATE.match(period):
+            continue
+        records.append(
+            Observation(
+                source=source,
+                series_id=series_id,
+                reference_period=date.fromisoformat(period),
+                value=_parse_value(row.get("OBS_VALUE")),
+                fetch_timestamp=fetch_timestamp,
+                raw_file=raw_file,
+            )
+        )
+    return records
+
+
 def _fetch_ts_from_name(name: str) -> datetime:
     # Filename is the ISO fetch timestamp, e.g. 2026-07-22T06:00:03.123456Z.json
     stem = name.rsplit(".", 1)[0]
@@ -114,8 +146,13 @@ def parse_file(path: str | Path) -> list[Observation]:
         raw_file=str(path),
     )
     text = path.read_text()
+    # .json is always FRED-shaped (real FRED and the synthetic generator).
     if path.suffix == ".json":
         return parse_response(json.loads(text), **meta)
+    # .csv formats differ by provider, so dispatch on source.
     if path.suffix == ".csv":
-        return parse_bundesbank_csv(text, **meta)
-    raise ValueError(f"no parser for raw file extension '{path.suffix}': {path}")
+        if meta["source"] == "bundesbank":
+            return parse_bundesbank_csv(text, **meta)
+        if meta["source"] == "ecb":
+            return parse_ecb_sdmx_csv(text, **meta)
+    raise ValueError(f"no parser for source '{meta['source']}' file {path}")

@@ -1,6 +1,11 @@
 from datetime import date, datetime, timezone
 
-from ingest.parse import Observation, parse_bundesbank_csv, parse_response
+from ingest.parse import (
+    Observation,
+    parse_bundesbank_csv,
+    parse_ecb_sdmx_csv,
+    parse_response,
+)
 
 
 def _payload() -> dict:
@@ -82,3 +87,29 @@ def test_parse_bundesbank_csv_skips_headers_and_missing():
     assert records[1].value is None            # "." -> missing
     assert records[2].reference_period == date(2026, 7, 22)
     assert records[2].value == 2.81
+
+
+# A trimmed ECB Data Portal (SDW) csvdata body: header row, then change-point rows.
+_ECB_CSV = (
+    "KEY,FREQ,REF_AREA,CURRENCY,TIME_PERIOD,OBS_VALUE,OBS_STATUS\n"
+    "FM.B.U2.EUR.4F.KR.MRR_FR.LEV,B,U2,EUR,2026-06-11,2.15,A\n"
+    "FM.B.U2.EUR.4F.KR.MRR_FR.LEV,B,U2,EUR,2026-06-17,2.40,A\n"
+)
+
+
+def test_parse_ecb_sdmx_csv_uses_time_period_and_obs_value():
+    ts = datetime(2026, 7, 22, 6, 0, 0, tzinfo=timezone.utc)
+    records = parse_ecb_sdmx_csv(
+        _ECB_CSV,
+        source="ecb",
+        series_id="ECB_MRO",
+        fetch_timestamp=ts,
+        raw_file="raw/ecb/ECB_MRO/2026-07-22T06:00:00.000000Z.csv",
+    )
+
+    assert len(records) == 2
+    assert records[0].source == "ecb"
+    assert records[0].reference_period == date(2026, 6, 11)
+    assert records[0].value == 2.15
+    assert records[1].reference_period == date(2026, 6, 17)
+    assert records[1].value == 2.40

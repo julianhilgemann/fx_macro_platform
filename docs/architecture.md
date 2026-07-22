@@ -3,7 +3,7 @@
 One thread, end to end: **fetch → immutable raw → load → DuckDB → dbt → FastAPI**.
 
 ```
-FRED API (json) + Bundesbank API (csv)   (or synthetic generator when no key)
+FRED (json) + Bundesbank (csv) + ECB SDW (csv)   (or synthetic generator when no key)
       │  ingest/fetch.py     (per-source client, verbatim body stored)
       ▼
 Immutable raw on disk        raw/{source}/{series_id}/{fetch_ts}.{json|csv}
@@ -45,7 +45,7 @@ ingestion into dbt.
 
 | Seam                | v1 choice        | Later                                   |
 |---------------------|------------------|-----------------------------------------|
-| Fetch sources       | FRED + Bundesbank (2 parsers) | ECB SDW as source #3        |
+| Fetch sources       | FRED + Bundesbank + ECB SDW (3 parsers) | more series / pairs |
 | Fetch mode          | synthetic / live | more series; ALFRED realtime windows    |
 | Orchestration       | `run_pipeline.sh` + cron | Dagster/Prefect                 |
 | Analytical DB       | DuckDB (file)    | Postgres when read/write contends       |
