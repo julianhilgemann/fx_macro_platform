@@ -11,13 +11,15 @@ with latest as (
 pivoted as (
     select
         reference_period as d,
-        max(case when series_id = 'DEXUSEU'           then value end) as eurusd_spot,
-        max(case when series_id = 'ECBDFR'            then value end) as ecb_policy_rate,
-        max(case when series_id = 'DFF'               then value end) as fed_funds_rate,
-        max(case when series_id = 'DGS2'              then value end) as us_2y,
-        max(case when series_id = 'DGS10'             then value end) as us_10y,
-        max(case when series_id = 'DE2YT_PLACEHOLDER' then value end) as de_2y,
-        max(case when series_id = 'IRLTLT01DEM156N'   then value end) as de_10y
+        max(case when series_id = 'DEXUSEU'         then value end) as eurusd_spot,
+        max(case when series_id = 'FEDFUNDS'        then value end) as fed_funds_rate,
+        -- Awaiting confirmed FRED series (PENDING_SERIES in ingest/config.py);
+        -- these stay NULL until the series are ingested.
+        max(case when series_id = 'ECBDFR'          then value end) as ecb_policy_rate,
+        max(case when series_id = 'DGS2'            then value end) as us_2y,
+        max(case when series_id = 'DGS10'           then value end) as us_10y,
+        max(case when series_id = '__DE_2Y__'       then value end) as de_2y,
+        max(case when series_id = 'IRLTLT01DEM156N' then value end) as de_10y
     from latest
     group by 1
 ),
