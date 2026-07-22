@@ -1,21 +1,24 @@
-"""Raw FRED JSON -> validated point-in-time observation records (Pydantic).
+"""Raw response bodies -> validated point-in-time observation records (Pydantic).
 
-`parse_response` is pure and unit-tested; `parse_file` derives the vintage
-metadata from the raw path layout raw/{source}/{series_id}/{fetch_ts}.json.
+Multi-source: FRED lands JSON, Bundesbank lands CSV. `parse_file` dispatches on
+the raw file's extension; each source's pure parser is unit-tested. reference_period,
+value, and fetch_timestamp are kept distinct so vintages stay correct.
 """
 from __future__ import annotations
 
+import csv
+import io
 import json
+import re
 from datetime import date, datetime, timezone
 from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict
 
+_ISO_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
 
 class Observation(BaseModel):
-    """One point-in-time record. reference_period, value, and fetch_timestamp
-    are kept as distinct fields — never collapsed — so vintages stay correct."""
-
     model_config = ConfigDict(frozen=True)
 
     source: str
@@ -27,7 +30,7 @@ class Observation(BaseModel):
 
 
 def _parse_value(raw: str | float | int | None) -> float | None:
-    # FRED encodes a missing observation as ".".
+    # Both FRED and Bundesbank encode a missing observation as ".".
     if raw is None:
         return None
     if isinstance(raw, (int, float)):
@@ -46,7 +49,7 @@ def parse_response(
     fetch_timestamp: datetime,
     raw_file: str,
 ) -> list[Observation]:
-    """Pure parser: a FRED observations payload -> validated records."""
+    """Pure parser: a FRED observations payload (dict) -> validated records."""
     records: list[Observation] = []
     for obs in payload.get("observations", []):
         records.append(
@@ -62,22 +65,57 @@ def parse_response(
     return records
 
 
+def parse_bundesbank_csv(
+    text: str,
+    *,
+    source: str,
+    series_id: str,
+    fetch_timestamp: datetime,
+    raw_file: str,
+) -> list[Observation]:
+    """Pure parser: a Bundesbank BBSSY CSV body -> validated records.
+
+    The file has metadata header rows (Comment, Decimals, ...) followed by
+    `YYYY-MM-DD,value[,flag]` rows; missing values are ".". Data rows are the
+    ones whose first column is an ISO date, so header rows are skipped naturally.
+    """
+    records: list[Observation] = []
+    for row in csv.reader(io.StringIO(text)):
+        if not row or not _ISO_DATE.match(row[0].strip()):
+            continue
+        records.append(
+            Observation(
+                source=source,
+                series_id=series_id,
+                reference_period=date.fromisoformat(row[0].strip()),
+                value=_parse_value(row[1] if len(row) > 1 else None),
+                fetch_timestamp=fetch_timestamp,
+                raw_file=raw_file,
+            )
+        )
+    return records
+
+
 def _fetch_ts_from_name(name: str) -> datetime:
     # Filename is the ISO fetch timestamp, e.g. 2026-07-22T06:00:03.123456Z.json
-    stem = name[:-5] if name.endswith(".json") else name
+    stem = name.rsplit(".", 1)[0]
     ts = datetime.fromisoformat(stem.replace("Z", "+00:00"))
     return ts if ts.tzinfo else ts.replace(tzinfo=timezone.utc)
 
 
 def parse_file(path: str | Path) -> list[Observation]:
-    """Parse one raw file, deriving (source, series_id, fetch_timestamp) from
-    its path: raw/{source}/{series_id}/{fetch_ts}.json"""
+    """Parse one raw file, deriving (source, series_id, fetch_timestamp) from its
+    path raw/{source}/{series_id}/{fetch_ts}.{ext} and the parser from {ext}."""
     path = Path(path)
-    payload = json.loads(path.read_text())
-    return parse_response(
-        payload,
+    meta = dict(
         source=path.parent.parent.name,
         series_id=path.parent.name,
         fetch_timestamp=_fetch_ts_from_name(path.name),
         raw_file=str(path),
     )
+    text = path.read_text()
+    if path.suffix == ".json":
+        return parse_response(json.loads(text), **meta)
+    if path.suffix == ".csv":
+        return parse_bundesbank_csv(text, **meta)
+    raise ValueError(f"no parser for raw file extension '{path.suffix}': {path}")

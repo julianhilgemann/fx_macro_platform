@@ -3,11 +3,11 @@
 One thread, end to end: **fetch → immutable raw → load → DuckDB → dbt → FastAPI**.
 
 ```
-FRED / ALFRED API  (or synthetic generator when no key)
-      │  ingest/fetch.py
+FRED API (json) + Bundesbank API (csv)   (or synthetic generator when no key)
+      │  ingest/fetch.py     (per-source client, verbatim body stored)
       ▼
-Immutable raw JSON on disk           raw/{source}/{series_id}/{fetch_ts}.json
-      │  ingest/load.py  (dumb, re-runnable, idempotent on grain)
+Immutable raw on disk        raw/{source}/{series_id}/{fetch_ts}.{json|csv}
+      │  ingest/load.py  (dumb, re-runnable, idempotent on grain; parses by extension)
       ▼
 DuckDB: raw_observations             one row per (source, series_id, ref_period, fetch_ts)
       │  dbt  (dbt/models)
@@ -45,8 +45,8 @@ ingestion into dbt.
 
 | Seam                | v1 choice        | Later                                   |
 |---------------------|------------------|-----------------------------------------|
-| Fetch source        | FRED (1 parser)  | ECB SDW as source #2 (multi-source)     |
-| Fetch mode          | synthetic / fred | more real series; ALFRED realtime windows |
+| Fetch sources       | FRED + Bundesbank (2 parsers) | ECB SDW as source #3        |
+| Fetch mode          | synthetic / live | more series; ALFRED realtime windows    |
 | Orchestration       | `run_pipeline.sh` + cron | Dagster/Prefect                 |
 | Analytical DB       | DuckDB (file)    | Postgres when read/write contends       |
 | Raw storage         | local disk       | Cloudflare R2                           |
