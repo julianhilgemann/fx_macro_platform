@@ -2,7 +2,7 @@
 
 Point-in-time macro/FX data platform. Ingests FRED/ALFRED data, stores it
 **append-only as as-reported vintages**, transforms with dbt, and serves curated
-dataframes over FastAPI.
+dataframes over FastAPI. Production-ready v1 implementation.
 
 This is the **v1 vertical slice**: one pair (EUR/USD), three sources (FRED,
 Bundesbank, ECB SDW), 13 series, running one thread end to end — `fetch → immutable
