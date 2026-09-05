@@ -1,10 +1,14 @@
-# dbt-duckdb profile. DUCKDB_PATH is exported by scripts/run_pipeline.sh so the
-# loader and dbt always target the same file. The fallback is relative to the
-# repo root (dbt is invoked with --project-dir dbt from there).
+# dbt-postgres profile. Connects as platform_writer (spec §4). Values default to
+# local M0 dev; override via environment or .env (never hardcode credentials).
 fx_macro:
-  target: dev
   outputs:
     dev:
-      type: duckdb
-      path: "{{ env_var('DUCKDB_PATH', 'warehouse/fx_macro.duckdb') }}"
+      type: postgres
+      host: "{{ env_var('POSTGRES_HOST', '127.0.0.1') }}"
+      port: "{{ env_var('POSTGRES_PORT', '5433') | int }}"
+      user: "{{ env_var('PLATFORM_WRITER_USER', 'platform_writer') }}"
+      password: "{{ env_var('PLATFORM_WRITER_PASSWORD', 'writer_dev') }}"
+      dbname: "{{ env_var('POSTGRES_DB', 'warehouse') }}"
+      schema: public
       threads: 4
+  target: dev

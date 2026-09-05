@@ -2,11 +2,11 @@ version: 2
 
 sources:
   - name: raw
-    description: "Append-only, point-in-time observations (FRED + Bundesbank + ECB SDW) landed by the loader."
-    schema: main
+    description: "Append-only fetch-level landing (spec §5). One row per fetch event."
+    schema: raw
     tables:
-      - name: raw_observations
+      - name: source_fetch
         description: >
-          One row per (source, series_id, reference_period, fetch_timestamp).
-          Immutable: re-fetches append new fetch_timestamp rows, never updates.
-          `source` distinguishes providers (fred, bundesbank).
+          One row per (source, resource, fetched_at). Byte-faithful: payload is the
+          parsed-to-JSON body, payload_raw the original bytes, payload_sha256 the
+          digest. Observations are extracted in staging from `payload`.

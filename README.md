@@ -5,52 +5,61 @@ responses are immutable, series revisions are preserved as vintages, and the
 whole thing is rebuildable from raw by re-running dbt.
 
 **Single source of truth:** [`platform-spec.md`](platform-spec.md). It is the
-architecture spec, the build contract, and the ground truth for implementation.
-Everything else in this repo defers to it.
+architecture spec and the build contract; everything else defers to it.
+The working delta list is [`docs/migration-plan.md`](docs/migration-plan.md),
+and environment gotchas for agents live in [`agents/notes.md`](agents/notes.md).
 
 ## Status
 
-- **Target (v2):** Postgres warehouse · Dagster orchestration · dbt + Elementary ·
-  FastAPI read layer · Metabase → single-node k3s + Tailscale on Hetzner.
-  See [`platform-spec.md`](platform-spec.md).
-- **Currently running (v1 slice):** a working DuckDB + cron vertical slice —
-  fetch → immutable raw → DuckDB → dbt → FastAPI — covering one EUR/USD panel
-  across three sources (FRED, Bundesbank, ECB SDW), 13 series.
-- **The bridge:** [`docs/migration-plan.md`](docs/migration-plan.md) maps the
-  current files onto the v2 target and sequences the M0–M8 milestones.
+| Stage | State |
+|---|---|
+| M0 — Postgres + Compose + schemas + roles | ✅ done |
+| M1–M3 — ingest → `raw.source_fetch` → dbt → FastAPI (all Postgres) | ✅ done |
+| M4+ — Astro chart, daily schedule, Metabase, Elementary, k3s/Tailscale | ⏳ pending |
 
-## Quick start (current v1 slice — superseded by v2)
+The pipeline is now **Postgres** end-to-end (the earlier DuckDB slice was retired).
+
+## Quick start
 
 ```bash
-uv sync                 # creates .venv, installs pinned deps + the project
-cp .env.example .env    # optional; defaults run in synthetic mode
-./scripts/run_pipeline.sh   # fetch -> load -> dbt run -> dbt test
+make up                       # Postgres 16 via Docker Compose (host port 5433)
+cp .env.example .env          # set FRED_API_KEY for live mode (else synthetic)
+./scripts/run_pipeline.sh     # fetch -> raw.source_fetch -> dbt seed/run/test
 uv run python -m uvicorn api.main:app --host 127.0.0.1 --port 8000
 ```
 
-- `GET /health` — liveness
-- `GET /series/{series_id}?start=&end=` — one series as records
-- `GET /panel?start=&end=` — the daily EUR/USD + differentials panel
+Interactive API docs at <http://127.0.0.1:8000/docs>.
 
-Interactive docs at <http://127.0.0.1:8000/docs>. Tests: `uv run pytest`.
+## API (spec §10)
+
+All endpoints return the `{data, meta}` envelope:
+
+- `GET /health`, `GET /ready`
+- `GET /v1/series` — catalog, filterable by `country`/`category`/`frequency`
+- `GET /v1/series/{series_id}` — series metadata
+- `GET /v1/series/{series_id}/observations?from=&to=&as_of=`
+- `GET /v1/observations?series_ids=a,b,c&from=&to=&as_of=`
+- `GET /v1/meta/freshness` — last observation and last known date per series
+
+The API connects as `platform_reader` and reads `marts`/`meta` only.
 
 ## Data sources
 
-- **FRED** (spot, US rates/yields, ECB deposit rate) — free key required.
+- **FRED** (spot, US rates/yields, ECB deposit rate) — free key required; vintage
+  (`known_at`) taken from each observation's `realtime_start`.
 - **Bundesbank** (daily German 2Y/10Y Bund yields) — no key.
 - **ECB SDW / Data Portal** (ECB policy corridor) — no key.
 
-Upstream endpoints, key structures, and response shapes are documented in
+Upstream endpoints and response shapes are documented in
 [`docs/api-calls.md`](docs/api-calls.md).
 
-## Layout (current, being reorganized per the migration plan)
+## Layout
 
 ```
-ingest/     config (series registry) · fetch (FRED json / Bundesbank csv / ECB csv) · parse · load (DuckDB)
-dbt/        staging → intermediate → mart, with tests
-api/        FastAPI, reads mart only
-raw/        append-only raw store (JSON + CSV)  (gitignored)
-warehouse/  fx_macro.duckdb                      (gitignored)
+ingest/     fetch clients -> Postgres raw.source_fetch (spec §5)
+dbt/        staging -> intermediate -> marts (Postgres), series_catalog seed
+api/        FastAPI read layer over marts (platform_reader)
+sql/        001_init.sh — roles, databases, schemas, raw landing table
+agents/     environment facts + gotchas for agentic builds
 docs/       api-calls.md · migration-plan.md
-scripts/    run_pipeline.sh — the v1 cron target
 ```

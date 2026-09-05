@@ -1,0 +1,14 @@
+series_id,source,source_key,title,description,unit,frequency,seasonal_adj,country,category,active
+DEXUSEU,fred,DEXUSEU,EUR/USD Spot,Euro to US dollar daily spot exchange rate,USD per EUR,D,false,US,fx,true
+DTWEXBGS,fred,DTWEXBGS,Broad USD Index,Nominal broad trade-weighted US dollar index,index,D,false,US,fx,true
+VIXCLS,fred,VIXCLS,CBOE VIX,CBOE Volatility Index (S&P 500 implied volatility),index,D,false,US,risk,true
+FEDFUNDS,fred,FEDFUNDS,Effective Fed Funds Rate,Effective federal funds rate (monthly),percent,M,false,US,policy_rate,true
+DFEDTARU,fred,DFEDTARU,Fed Funds Target Upper,Federal funds target range upper bound,percent,D,false,US,policy_rate,true
+DFEDTARL,fred,DFEDTARL,Fed Funds Target Lower,Federal funds target range lower bound,percent,D,false,US,policy_rate,true
+ECBDFR,fred,ECBDFR,ECB Deposit Facility Rate,ECB deposit facility rate (corridor floor),percent,D,false,EA,policy_rate,true
+ECB_MRO,ecb,FM/B.U2.EUR.4F.KR.MRR_FR.LEV,ECB Main Refinancing Rate,ECB main refinancing operations fixed rate (corridor mid),percent,D,false,EA,policy_rate,true
+ECB_MLF,ecb,FM/B.U2.EUR.4F.KR.MLFR.LEV,ECB Marginal Lending Rate,ECB marginal lending facility rate (corridor ceiling),percent,D,false,EA,policy_rate,true
+DGS2,fred,DGS2,US 2Y Treasury Yield,Market yield on US 2-year Treasury constant maturity,percent,D,false,US,yield,true
+DGS10,fred,DGS10,US 10Y Treasury Yield,Market yield on US 10-year Treasury constant maturity,percent,D,false,US,yield,true
+DE2Y,bundesbank,D.REN.EUR.A610.000000WT0202.A,German 2Y Bund Yield,Daily yield of the current 2-year German federal note,percent,D,false,DE,yield,true
+DE10Y,bundesbank,D.REN.EUR.A630.000000WT1010.A,German 10Y Bund Yield,Daily yield of the current 10-year German federal bond,percent,D,false,DE,yield,true

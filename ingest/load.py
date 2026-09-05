@@ -1,95 +1,121 @@
-"""Load raw JSON files into the DuckDB raw table. Dumb and re-runnable.
+"""Ingest orchestrator: fetch -> verbatim archive -> raw.source_fetch (Postgres).
 
-Idempotent on the point-in-time grain (source, series_id, reference_period,
-fetch_timestamp): re-running never duplicates; new fetch timestamps append.
+One row per *fetch event* per series (spec §5), byte-faithful with a sha256.
+Per-series fault tolerance: a failed fetch is recorded (http_status, null
+payload) rather than aborting the whole run (spec §8). Parsing to JSON happens
+at this boundary; the byte-faithful original is carried in `payload_raw`.
 """
 from __future__ import annotations
 
+import hashlib
+import json
 from datetime import datetime, timezone
 from pathlib import Path
 
-import duckdb
-import polars as pl
+import psycopg
+from psycopg.types.json import Jsonb
 
-from ingest.config import DUCKDB_PATH, RAW_DIR, RAW_TABLE
-from ingest.parse import Observation, parse_file
+from ingest.config import (
+    BUNDESBANK_BASE_URL,
+    ECB_SDW_BASE_URL,
+    FETCH_MODE,
+    FRED_BASE_URL,
+    PG_DB,
+    PG_HOST,
+    PG_PORT,
+    RAW_DIR,
+    RAW_TABLE,
+    SERIES,
+    WRITER_PASSWORD,
+    WRITER_USER,
+)
+from ingest.fetch import FetchResult, fetch_series
+from ingest.parse import parse_bundesbank_csv, parse_ecb_sdmx_csv
 
-# Raw file formats the parser can handle (FRED = json, Bundesbank = csv).
-LOADABLE_SUFFIXES = {".json", ".csv"}
+_BASE_URLS = {"fred": FRED_BASE_URL, "bundesbank": BUNDESBANK_BASE_URL, "ecb": ECB_SDW_BASE_URL}
 
-DDL = f"""
-CREATE TABLE IF NOT EXISTS {RAW_TABLE} (
-    source            VARCHAR   NOT NULL,
-    series_id         VARCHAR   NOT NULL,
-    reference_period  DATE      NOT NULL,
-    value             DOUBLE,
-    fetch_timestamp   TIMESTAMP NOT NULL,
-    raw_file          VARCHAR   NOT NULL,
-    loaded_at         TIMESTAMP NOT NULL,
-    PRIMARY KEY (source, series_id, reference_period, fetch_timestamp)
-);
+INSERT_SQL = f"""
+INSERT INTO {RAW_TABLE}
+    (source, resource, request_url, request_params, fetched_at,
+     http_status, content_type, payload, payload_raw, payload_sha256, dagster_run_id)
+VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
 """
 
 
-def _records_to_df(records: list[Observation], loaded_at: datetime) -> pl.DataFrame:
-    return pl.DataFrame(
-        {
-            "source": [r.source for r in records],
-            "series_id": [r.series_id for r in records],
-            "reference_period": [r.reference_period for r in records],
-            "value": [r.value for r in records],
-            # DuckDB TIMESTAMP is naive; store UTC wall-clock.
-            "fetch_timestamp": [r.fetch_timestamp.replace(tzinfo=None) for r in records],
-            "raw_file": [r.raw_file for r in records],
-            "loaded_at": [loaded_at for _ in records],
-        },
-        schema={
-            "source": pl.Utf8,
-            "series_id": pl.Utf8,
-            "reference_period": pl.Date,
-            "value": pl.Float64,
-            "fetch_timestamp": pl.Datetime("us"),
-            "raw_file": pl.Utf8,
-            "loaded_at": pl.Datetime("us"),
-        },
-    )
+def _sha256(b: bytes) -> str:
+    return hashlib.sha256(b).hexdigest()
 
 
-def run() -> int:
-    files = sorted(p for p in RAW_DIR.rglob("*") if p.suffix in LOADABLE_SUFFIXES)
-    records: list[Observation] = []
-    for f in files:
-        records.extend(parse_file(f))
+def _normalize_payload(res: FetchResult) -> dict | None:
+    """Parsed-to-JSON body for `payload`. FRED is already JSON; CSV sources are
+    converted at the client boundary to a uniform `{"observations": [...]}`."""
+    if res.ext == "json":
+        try:
+            return json.loads(res.body.decode("utf-8"))
+        except Exception:
+            return None
+    text = res.body.decode("utf-8", errors="replace")
+    ts = datetime.now(timezone.utc)
+    if res.source == "bundesbank":
+        records = parse_bundesbank_csv(text, source=res.source, series_id=res.resource, fetch_timestamp=ts, raw_file="")
+    elif res.source == "ecb":
+        records = parse_ecb_sdmx_csv(text, source=res.source, series_id=res.resource, fetch_timestamp=ts, raw_file="")
+    else:
+        records = []
+    return {
+        "observations": [
+            {"date": r.reference_period.isoformat(),
+             "value": None if r.value is None else str(r.value)}
+            for r in records
+        ]
+    }
 
-    if not records:
-        print("[load] no raw records found — run the fetch step first")
-        return 0
 
-    loaded_at = datetime.now(timezone.utc).replace(tzinfo=None)
-    incoming = _records_to_df(records, loaded_at)
+def _archive(res: FetchResult, fetch_ts: datetime) -> Path:
+    ts = fetch_ts.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f") + "Z"
+    path = RAW_DIR / res.source / res.resource / f"{ts}.{res.ext}"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(res.body)
+    return path
 
-    DUCKDB_PATH.parent.mkdir(parents=True, exist_ok=True)
-    con = duckdb.connect(str(DUCKDB_PATH))
-    try:
-        con.execute(DDL)
-        before = con.execute(f"SELECT count(*) FROM {RAW_TABLE}").fetchone()[0]
-        con.register("incoming", incoming)
-        # INSERT OR IGNORE => existing grains skipped, new vintages appended.
-        con.execute(
-            f"""
-            INSERT OR IGNORE INTO {RAW_TABLE}
-            SELECT source, series_id, reference_period, value,
-                   fetch_timestamp, raw_file, loaded_at
-            FROM incoming
-            """
-        )
-        after = con.execute(f"SELECT count(*) FROM {RAW_TABLE}").fetchone()[0]
-    finally:
-        con.close()
 
-    print(f"[load] parsed {len(records)} records from {len(files)} raw files")
-    print(f"[load] {RAW_TABLE}: {before} -> {after} rows (+{after - before} new)")
-    return after - before
+def run() -> dict:
+    fetch_ts = datetime.now(timezone.utc)
+    as_of = fetch_ts.date()
+    rows: list[tuple] = []
+    ok = failed = 0
+    for series in SERIES:
+        try:
+            res = fetch_series(series, as_of)
+            _archive(res, fetch_ts)
+            payload = _normalize_payload(res)
+            rows.append((
+                res.source, res.resource, res.request_url,
+                Jsonb(res.request_params), fetch_ts,
+                res.http_status, res.content_type,
+                Jsonb(payload) if payload is not None else None,
+                res.body, _sha256(res.body), None,
+            ))
+            ok += 1
+            print(f"  {series.series_id:9s} [{series.source:10s}] {res.http_status}  {len(res.body)} bytes")
+        except Exception as exc:
+            failed += 1
+            status = getattr(getattr(exc, "response", None), "status_code", None) or 0
+            rows.append((
+                series.source, series.series_id, _BASE_URLS.get(series.source, ""),
+                Jsonb({}), fetch_ts, status, None, None, None, _sha256(b""), None,
+            ))
+            print(f"  FAIL {series.series_id:9s} [{series.source:10s}] {exc}")
+
+    landed = 0
+    if rows:
+        with psycopg.connect(host=PG_HOST, port=PG_PORT, dbname=PG_DB,
+                             user=WRITER_USER, password=WRITER_PASSWORD) as conn:
+            with conn.cursor() as cur:
+                cur.executemany(INSERT_SQL, rows)
+        landed = len(rows)
+    print(f"[ingest] mode={FETCH_MODE}  {ok} ok, {failed} failed, {landed} rows -> {RAW_TABLE}")
+    return {"ok": ok, "failed": failed, "landed": landed}
 
 
 def main() -> None:

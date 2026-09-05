@@ -22,3 +22,8 @@ dbt/.user.yml
 
 # OS
 .DS_Store
+
+# DeepSeek Harness runtime cache (created in cwd by the agent runtime)
+.dsh-cache/
+.dsh-pnpm/
+.dsh-tooling/

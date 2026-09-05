@@ -1,0 +1,20 @@
+version: 2
+
+seeds:
+  - name: series_catalog
+    description: "Hand-maintained series catalog (spec §7), version controlled as a seed."
+    config:
+      column_types:
+        seasonal_adj: boolean
+        active: boolean
+    columns:
+      - name: series_id
+        description: "Canonical platform series id (not the provider's)."
+        tests: [unique, not_null]
+      - name: source
+        tests: [not_null]
+      - name: frequency
+        tests:
+          - accepted_values:
+              arguments:
+                values: ['D', 'W', 'M', 'Q', 'A']

@@ -1,15 +1,17 @@
-"""Fetch each series and write the verbatim response to the append-only raw store.
+"""Fetch clients. Each returns verbatim bytes plus request metadata (no disk I/O).
 
-Multi-source: FRED (JSON) and Bundesbank (CSV) are fetched by their own clients;
-each response body is stored verbatim, keyed by fetch timestamp, with the format's
-extension. Re-runs never overwrite; they produce a *new* vintage snapshot.
+Three real clients (FRED JSON, Bundesbank CSV, ECB SDW CSV) plus a deterministic
+synthetic generator so the pipeline runs without a FRED key. The orchestrator in
+`ingest/load.py` writes the verbatim bytes to disk and lands rows in
+`raw.source_fetch` (spec §5). Parsing to JSON happens at this boundary; the
+byte-faithful original is always carried through.
 """
 from __future__ import annotations
 
 import json
 import random
+from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
-from pathlib import Path
 
 import requests
 
@@ -20,7 +22,6 @@ from ingest.config import (
     FRED_API_KEY,
     FRED_BASE_URL,
     HISTORY_START,
-    RAW_DIR,
     SERIES,
     Series,
 )
@@ -28,18 +29,21 @@ from ingest.config import (
 SYNTHETIC = FETCH_MODE == "synthetic"
 
 
-def _fetch_ts_str(ts: datetime) -> str:
-    # ISO-8601 UTC with microseconds, 'Z' suffix — used as the raw file key.
-    return ts.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f") + "Z"
+@dataclass(frozen=True)
+class FetchResult:
+    source: str
+    resource: str          # series_id
+    request_url: str
+    request_params: dict   # api_key excluded (never persisted)
+    http_status: int
+    content_type: str | None
+    body: bytes            # verbatim response bytes
+    ext: str               # "json" | "csv"
 
 
-def _raw_path(series: Series, fetch_ts: datetime, ext: str) -> Path:
-    return RAW_DIR / series.source / series.series_id / f"{_fetch_ts_str(fetch_ts)}.{ext}"
+# --- real sources -----------------------------------------------------------
 
-
-# --- real sources: each returns (verbatim_body, file_extension) -----------
-
-def fetch_fred(series: Series) -> tuple[str, str]:
+def fetch_fred(series: Series) -> FetchResult:
     if not FRED_API_KEY:
         raise RuntimeError("live FRED fetch requires FRED_API_KEY in the environment / .env")
     params = {
@@ -50,26 +54,51 @@ def fetch_fred(series: Series) -> tuple[str, str]:
     }
     resp = requests.get(FRED_BASE_URL, params=params, timeout=30)
     resp.raise_for_status()
-    return resp.text, "json"
+    return FetchResult(
+        source=series.source,
+        resource=series.series_id,
+        request_url=FRED_BASE_URL,
+        request_params={k: v for k, v in params.items() if k != "api_key"},
+        http_status=resp.status_code,
+        content_type=resp.headers.get("content-type"),
+        body=resp.content,
+        ext="json",
+    )
 
 
-def fetch_bundesbank(series: Series) -> tuple[str, str]:
+def fetch_bundesbank(series: Series) -> FetchResult:
     url = f"{BUNDESBANK_BASE_URL}/{series.key}"
-    resp = requests.get(url, params={"format": "csv", "lang": "en"}, timeout=30)
+    params = {"format": "csv", "lang": "en"}
+    resp = requests.get(url, params=params, timeout=30)
     resp.raise_for_status()
-    return resp.text, "csv"
+    return FetchResult(
+        source=series.source,
+        resource=series.series_id,
+        request_url=url,
+        request_params=params,
+        http_status=resp.status_code,
+        content_type=resp.headers.get("content-type"),
+        body=resp.content,
+        ext="csv",
+    )
 
 
-def fetch_ecb(series: Series) -> tuple[str, str]:
+def fetch_ecb(series: Series) -> FetchResult:
     # series.key includes the dataset, e.g. "FM/B.U2.EUR.4F.KR.MRR_FR.LEV".
     url = f"{ECB_SDW_BASE_URL}/{series.key}"
-    resp = requests.get(
-        url,
-        params={"startPeriod": HISTORY_START.isoformat(), "format": "csvdata"},
-        timeout=30,
-    )
+    params = {"startPeriod": HISTORY_START.isoformat(), "format": "csvdata"}
+    resp = requests.get(url, params=params, timeout=30)
     resp.raise_for_status()
-    return resp.text, "csv"
+    return FetchResult(
+        source=series.source,
+        resource=series.series_id,
+        request_url=url,
+        request_params=params,
+        http_status=resp.status_code,
+        content_type=resp.headers.get("content-type"),
+        body=resp.content,
+        ext="csv",
+    )
 
 
 REAL_CLIENTS = {"fred": fetch_fred, "bundesbank": fetch_bundesbank, "ecb": fetch_ecb}
@@ -95,7 +124,6 @@ def _month_ends(start: date, end: date):
         d = nxt
 
 
-# role -> (level, daily vol) for mean-reverting random walks
 _SYNTH_LEVELS = {
     "eurusd_spot":     (1.08, 0.004),
     "usd_broad_index": (120.0, 0.3),
@@ -105,11 +133,10 @@ _SYNTH_LEVELS = {
     "de_2y":           (2.70, 0.03),
     "de_10y":          (2.40, 0.03),
 }
-# role -> starting policy rate (step functions)
 _SYNTH_RATES = {
-    "ecb_policy_rate":  3.75,   # DFR (floor)
-    "ecb_mro_rate":     4.00,   # MRO (mid)
-    "ecb_mlf_rate":     4.25,   # MLF (ceiling)
+    "ecb_policy_rate":  3.75,
+    "ecb_mro_rate":     4.00,
+    "ecb_mlf_rate":     4.25,
     "fed_funds_rate":   4.33,
     "fed_target_lower": 4.25,
     "fed_target_upper": 4.50,
@@ -117,12 +144,7 @@ _SYNTH_RATES = {
 
 
 def synth_observations(series: Series, as_of: date) -> list[dict]:
-    """Deterministic-ish synthetic history shaped like FRED observations.
-
-    The base path is seeded by series_id (stable across runs); the trailing
-    points get a small revision seeded by the fetch date, so re-fetching yields
-    a genuinely new vintage — exercising the point-in-time archive.
-    """
+    """Deterministic-ish synthetic history shaped like FRED observations."""
     dates = (
         list(_month_ends(HISTORY_START, as_of))
         if series.frequency == "monthly"
@@ -135,16 +157,15 @@ def synth_observations(series: Series, as_of: date) -> list[dict]:
         level, vol = _SYNTH_LEVELS[series.role]
         x = level
         for _ in dates:
-            x += rng.gauss(0, vol) - 0.02 * (x - level)  # mean-reverting
+            x += rng.gauss(0, vol) - 0.02 * (x - level)
             values.append(x)
     else:
         rate = _SYNTH_RATES.get(series.role, 2.0)
         for i in range(len(dates)):
-            if i > 0 and rng.random() < 0.01:          # occasional 25bp move
+            if i > 0 and rng.random() < 0.01:
                 rate += rng.choice([-0.25, 0.25])
             values.append(rate)
 
-    # Vintage revision: nudge the last few points by a fetch-date-seeded amount.
     rev = random.Random(f"{series.series_id}:{as_of.isoformat()}")
     for i in range(max(0, len(values) - 5), len(values)):
         values[i] += rev.gauss(0, 0.0005)
@@ -158,7 +179,7 @@ def synth_observations(series: Series, as_of: date) -> list[dict]:
     ]
 
 
-def synth_payload(series: Series, as_of: date) -> tuple[str, str]:
+def synth_payload(series: Series, as_of: date) -> FetchResult:
     obs = synth_observations(series, as_of)
     payload = {
         "realtime_start": as_of.isoformat(),
@@ -170,41 +191,24 @@ def synth_payload(series: Series, as_of: date) -> tuple[str, str]:
         "count": len(obs), "offset": 0, "limit": 100000,
         "observations": obs,
     }
-    return json.dumps(payload, indent=2), "json"
+    return FetchResult(
+        source=series.source,
+        resource=series.series_id,
+        request_url="synthetic",
+        request_params={"mode": "synthetic"},
+        http_status=200,
+        content_type="application/json",
+        body=json.dumps(payload, indent=2).encode("utf-8"),
+        ext="json",
+    )
 
 
 # --- driver ----------------------------------------------------------------
 
-def fetch_series(series: Series, as_of: date) -> tuple[str, str]:
+def fetch_series(series: Series, as_of: date) -> FetchResult:
     if SYNTHETIC:
         return synth_payload(series, as_of)
     client = REAL_CLIENTS.get(series.source)
     if client is None:
         raise ValueError(f"no fetch client for source '{series.source}'")
     return client(series)
-
-
-def run() -> list[Path]:
-    fetch_ts = datetime.now(timezone.utc)
-    as_of = fetch_ts.date()
-    written: list[Path] = []
-    for series in SERIES:
-        body, ext = fetch_series(series, as_of)
-        path = _raw_path(series, fetch_ts, ext)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(body)
-        written.append(path)
-        rel = path.relative_to(RAW_DIR.parent)
-        print(f"  {series.series_id:9s} [{series.source:10s}] -> {rel}  ({len(body)} bytes)")
-    return written
-
-
-def main() -> None:
-    mode = "synthetic" if SYNTHETIC else "live"
-    print(f"[fetch] mode={mode}  series={len(SERIES)}  sources={sorted({s.source for s in SERIES})}")
-    paths = run()
-    print(f"[fetch] wrote {len(paths)} immutable raw files")
-
-
-if __name__ == "__main__":
-    main()

@@ -1,13 +1,12 @@
--- Staging: parse the FRED fetch payload (jsonb) into typed observations.
--- known_at = the observation's realtime_start (release/vintage date);
--- fetched_at = provenance (when we pulled it).
+-- Staging: parse the ECB SDW fetch payload (normalized jsonb) into observations.
+-- ECB exposes no vintage; known_at = fetched_at::date (approximate revision history).
 with src as (
     select
         resource as series_id,
         fetched_at,
         payload -> 'observations' as obs
     from {{ source('raw', 'source_fetch') }}
-    where source = 'fred'
+    where source = 'ecb'
       and payload is not null
 ),
 
@@ -26,7 +25,7 @@ select
         when o ->> 'value' is null or o ->> 'value' = '.' then null
         else (o ->> 'value')::numeric
     end as value,
-    coalesce((o ->> 'realtime_start')::date, fetched_at::date) as known_at,
+    fetched_at::date as known_at,
     fetched_at
 from flat
 where o ->> 'date' is not null

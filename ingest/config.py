@@ -1,9 +1,9 @@
-"""Central configuration: paths, fetch mode, and the series registry.
+"""Central configuration: paths, Postgres connection, fetch mode, series registry.
 
-Single source of truth for *what* the platform ingests. When the real FRED key
-is wired in, only the series IDs below (and FX_FETCH_MODE) need attention —
-nothing downstream hardcodes them except the dbt panel pivot, which maps
-series_id -> panel column and is documented in int_daily_panel.sql.
+Single source of truth for *what* the platform ingests. The series registry below
+is configuration-as-code for now; it moves to a dbt seed (`meta.series_catalog`)
+as part of M2 (spec §7). Nothing downstream hardcodes a series except the dbt
+pivot, which maps series_id -> panel column.
 """
 from __future__ import annotations
 
@@ -24,35 +24,42 @@ def _path_env(name: str, default: Path) -> Path:
     return Path(raw).expanduser().resolve() if raw else default
 
 
+# Append-only verbatim archive on disk (belt-and-suspenders alongside raw.source_fetch).
 RAW_DIR: Path = _path_env("RAW_DIR", REPO_ROOT / "raw")
-DUCKDB_PATH: Path = _path_env("DUCKDB_PATH", REPO_ROOT / "warehouse" / "fx_macro.duckdb")
 
 FRED_API_KEY: str | None = os.getenv("FRED_API_KEY") or None
 FRED_BASE_URL = "https://api.stlouisfed.org/fred/series/observations"
 
-# Source #2: Bundesbank statistics REST API (BBSSY flow = daily yields of the
-# most recently issued German federal securities). No key required.
+# Source #2: Bundesbank statistics REST API (BBSSY flow). No key required.
 BUNDESBANK_BASE_URL = "https://api.statistiken.bundesbank.de/rest/data/BBSSY"
 
-# Source #3: ECB Data Portal (SDW) SDMX REST API. No key required. A series'
-# provider_key includes the dataset, e.g. "FM/B.U2.EUR.4F.KR.MRR_FR.LEV".
+# Source #3: ECB Data Portal (SDW) SDMX REST API. No key required.
 ECB_SDW_BASE_URL = "https://data-api.ecb.europa.eu/service/data"
 
 # "synthetic" needs no key and generates deterministic FRED-shaped data so the
 # whole pipeline runs end-to-end. "fred" hits the real API.
 FETCH_MODE: str = os.getenv("FX_FETCH_MODE") or ("fred" if FRED_API_KEY else "synthetic")
 
-# How far back synthetic history goes (real FRED pulls use it as observation_start).
+# How far back history goes (real FRED pulls use it as observation_start).
 HISTORY_START: date = date.fromisoformat(os.getenv("FX_HISTORY_START", "2024-01-01"))
 
-# Name of the raw landing table in DuckDB (dbt source points here).
-RAW_TABLE = "raw_observations"
+# --- Postgres (spec §13). Ingest + dbt connect as platform_writer ----------
+PG_HOST: str = os.getenv("POSTGRES_HOST", "127.0.0.1")
+PG_PORT: int = int(os.getenv("POSTGRES_PORT", "5433"))
+PG_DB: str = os.getenv("POSTGRES_DB", "warehouse")
+WRITER_USER: str = os.getenv("PLATFORM_WRITER_USER", "platform_writer")
+WRITER_PASSWORD: str = os.getenv("PLATFORM_WRITER_PASSWORD", "writer_dev")
+READER_USER: str = os.getenv("PLATFORM_READER_USER", "platform_reader")
+READER_PASSWORD: str = os.getenv("PLATFORM_READER_PASSWORD", "reader_dev")
+
+# Fetch-level landing table (spec §5). One row per fetch event.
+RAW_TABLE = "raw.source_fetch"
 
 
 @dataclass(frozen=True)
 class Series:
     series_id: str            # stable, readable id (used in raw path + dbt pivot)
-    source: str               # "fred" | "bundesbank"
+    source: str               # "fred" | "ecb" | "bundesbank"
     frequency: str            # "daily" (business days) | "monthly"
     role: str                 # stable panel column name (dbt pivots on this)
     provider_key: str = ""    # provider's own key if it differs from series_id
@@ -64,9 +71,8 @@ class Series:
         return self.provider_key or self.series_id
 
 
-# v1 EUR/USD slice. Two sources: FRED (spot, US rates/yields, ECB rate) and the
-# Bundesbank (true daily German Bund yields — FRED has no clean daily German 2Y).
-# Each yield leg is stored separately; dbt computes the differentials.
+# v1 payload: one EUR/USD slice across FRED (spot, US rates/yields, ECB floor),
+# ECB SDW (MRO/MLF corridor), Bundesbank (daily German Bund yields).
 SERIES: list[Series] = [
     # --- spot + FX context (FRED) ---
     Series("DEXUSEU",  "fred", "daily",   "eurusd_spot"),      # EUR/USD spot
@@ -96,9 +102,6 @@ SERIES: list[Series] = [
            provider_key="D.REN.EUR.A630.000000WT1010.A"),      # German 10Y Bund (daily)
 ]
 
-# Nothing parked right now. Add future series (e.g. ECB SDW as source #3) here,
-# then wire the matching series_id branch in
-# dbt/models/intermediate/int_daily_panel.sql.
 PENDING_SERIES: list[Series] = []
 
 

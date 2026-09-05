@@ -1,13 +1,13 @@
 name: "fx_macro"
-version: "0.1.0"
+version: "0.2.0"
 config-version: 2
 
 profile: "fx_macro"
 
 model-paths: ["models"]
+seed-paths: ["seeds"]
 test-paths: ["tests"]
 macro-paths: ["macros"]
-seed-paths: ["seeds"]
 
 target-path: "target"
 clean-targets: ["target", "dbt_packages", "logs"]
@@ -15,8 +15,15 @@ clean-targets: ["target", "dbt_packages", "logs"]
 models:
   fx_macro:
     staging:
+      +schema: staging
       +materialized: view
     intermediate:
+      +schema: intermediate
       +materialized: view
-    mart:
+    marts:
+      +schema: marts
       +materialized: table
+
+seeds:
+  fx_macro:
+    +schema: meta

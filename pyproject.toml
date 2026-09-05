@@ -1,19 +1,17 @@
 [project]
 name = "fx-macro-platform"
 version = "0.1.0"
-description = "Point-in-time FX/macro data platform: fetch -> immutable raw -> DuckDB -> dbt -> FastAPI."
+description = "Point-in-time FX/macro data platform: fetch -> immutable raw -> Postgres -> dbt -> FastAPI."
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
 dependencies = [
     "requests>=2.32",
     "fredapi>=0.5.2",
-    "duckdb>=1.0",
-    "dbt-duckdb>=1.9.0",
+    "psycopg[binary]>=3.1",
+    "dbt-postgres>=1.9.0",
     "fastapi>=0.115",
     "uvicorn[standard]>=0.32",
     "pydantic>=2.9",
-    "polars>=1.12",
-    "pyarrow>=17",
     "python-dotenv>=1.0",
 ]
 
