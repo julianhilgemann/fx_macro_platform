@@ -1,5 +1,12 @@
 # Upstream API Calls
 
+> **Scope:** this is the *upstream-provider reference* — the FRED / ECB / Bundesbank
+> endpoints, key structures, and response shapes. The platform architecture and
+> build contract live in [`platform-spec.md`](../platform-spec.md); the migration
+> from the current DuckDB slice is tracked in
+> [`docs/migration-plan.md`](migration-plan.md). The series registry will move from
+> `ingest/config.py` to `dbt/seeds/series_catalog.csv` (spec §7).
+
 How the platform fetches each series, and what the raw responses look like. The
 series registry in [`ingest/config.py`](../ingest/config.py) is the single source
 of truth; this doc explains the three providers behind it.
