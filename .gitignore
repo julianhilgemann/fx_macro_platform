@@ -33,3 +33,6 @@ dbt/.user.yml
 
 # Generated reports (Elementary edr output)
 reports/
+
+# Elementary edr CLI logs/intermediates
+edr_target/
