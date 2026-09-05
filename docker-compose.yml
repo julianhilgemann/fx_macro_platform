@@ -79,6 +79,12 @@ services:
     #   PostgreSQL  host=postgres port=5432  db=warehouse
     #   user=platform_reader  password=reader_dev
 
+  launchpad:
+    image: nginx:alpine
+    volumes:
+      - ./launchpad:/usr/share/nginx/html:ro
+    ports: ["8080:80"]   # dev navigation hub -> links to the services above
+
 volumes:
   pgdata:
   dagster_home:
