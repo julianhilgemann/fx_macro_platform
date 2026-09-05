@@ -95,3 +95,9 @@ infra, ingest, dbt, or the API. The authoritative spec is
     at build time (so `@dbt_assets` has a manifest and Elementary is installed).
     `.dockerignore` must exclude `dbt/target`, `dbt/dbt_packages`, `.venv`,
     `raw`, `warehouse`, `.env` — otherwise `COPY . .` drags in stale/local state.
+19. **`edr` needs an `elementary` profile in `profiles.yml`.** `edr report` (and
+    `edr monitor`) fail with `Could not find profile named 'elementary'` unless
+    `dbt/profiles.yml` also has an `elementary:` profile (same Postgres target,
+    schema `elementary`). `edr report --project-dir dbt --profiles-dir dbt
+    --file-path ...` writes a self-contained HTML; serve it statically (see
+    `scripts/elementary_serve.sh` + the `elementary-report` compose service).

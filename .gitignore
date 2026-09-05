@@ -30,3 +30,6 @@ dbt/.user.yml
 
 # Dagster local instance (run/event storage)
 .dagster_home/
+
+# Generated reports (Elementary edr output)
+reports/

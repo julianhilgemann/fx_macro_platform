@@ -1,5 +1,5 @@
-# dbt-postgres profile. Connects as platform_writer (spec §4). Values default to
-# local M0 dev; override via environment or .env (never hardcode credentials).
+# dbt-postgres profiles. dbt connects as platform_writer (spec §4); Elementary's
+# `edr` CLI reads the `elementary` profile pointing at the same warehouse.
 fx_macro:
   outputs:
     dev:
@@ -12,3 +12,16 @@ fx_macro:
       schema: public
       threads: 4
   target: dev
+
+elementary:
+  outputs:
+    default:
+      type: postgres
+      host: "{{ env_var('POSTGRES_HOST', '127.0.0.1') }}"
+      port: "{{ env_var('POSTGRES_PORT', '5433') | int }}"
+      user: "{{ env_var('PLATFORM_WRITER_USER', 'platform_writer') }}"
+      password: "{{ env_var('PLATFORM_WRITER_PASSWORD', 'writer_dev') }}"
+      dbname: "{{ env_var('POSTGRES_DB', 'warehouse') }}"
+      schema: elementary
+      threads: 4
+  target: default

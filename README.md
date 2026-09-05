@@ -37,10 +37,11 @@ make up                       # builds the image and starts all 5 services
 | Dagster UI | <http://127.0.0.1:3000> | asset graph, runs, schedule |
 | API (OpenAPI) | <http://127.0.0.1:8000/docs> | `/v1/*` endpoints |
 | Metabase | <http://127.0.0.1:3001> | add warehouse: host `postgres`, db `warehouse`, user `platform_reader` |
+| Elementary | <http://127.0.0.1:8081> | data-quality report (regenerates every 30 min) |
 
 `make up` brings up `postgres`, `dagster-webserver`, `dagster-daemon`, `api`,
-`metabase`, and the `launchpad`. Dagster metadata lives in the `dagster` DB; the
-warehouse is `warehouse`.
+`metabase`, `elementary-report`, and the `launchpad`. Dagster metadata lives in
+the `dagster` DB; the warehouse is `warehouse`.
 The daily schedule (`macro_pipeline_schedule`, 06:00 Europe/Berlin) ingests all
 sources and runs the full dbt build.
 
