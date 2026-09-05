@@ -14,10 +14,11 @@ and environment gotchas for agents live in [`agents/notes.md`](agents/notes.md).
 | Stage | State |
 |---|---|
 | M0 — Postgres + Compose + schemas + roles | ✅ done |
-| M1–M3 — ingest → `raw.source_fetch` → dbt → FastAPI (all Postgres) | ✅ done |
-| M4+ — Astro chart, daily schedule, Metabase, Elementary, k3s/Tailscale | ⏳ pending |
+| M1 — Dagster orchestration (ingest assets + dbt assets + schedule) | ✅ done |
+| M2–M3 — dbt → marts, FastAPI (all Postgres) | ✅ done |
+| M4+ — Astro chart, Metabase, Elementary, k3s/Tailscale | ⏳ pending |
 
-The pipeline is now **Postgres** end-to-end (the earlier DuckDB slice was retired).
+The pipeline is now **Postgres + Dagster** end-to-end (the earlier DuckDB slice was retired).
 
 ## Quick start
 
@@ -29,6 +30,18 @@ uv run python -m uvicorn api.main:app --host 127.0.0.1 --port 8000
 ```
 
 Interactive API docs at <http://127.0.0.1:8000/docs>.
+
+## Orchestration (Dagster)
+
+```bash
+uv run dagster dev -m orchestration.definitions   # UI at http://127.0.0.1:3000
+```
+
+The asset graph (spec §8): `raw_fred` / `raw_ecb` / `raw_bundesbank` (ingest) →
+`stg_*` → `int_macro__observations_unioned` → `fct_macro_observation` (+`_latest`)
+and `dim_series`; the `series_catalog` seed feeds `dim_series`. A daily schedule
+runs the whole thing at 06:00 Europe/Berlin. In the UI: **Assets** for the graph,
+**Runs** for execution history, **Overview → Schedules** for the schedule.
 
 ## API (spec §10)
 

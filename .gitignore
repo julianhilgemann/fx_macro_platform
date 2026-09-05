@@ -27,3 +27,6 @@ dbt/.user.yml
 .dsh-cache/
 .dsh-pnpm/
 .dsh-tooling/
+
+# Dagster local instance (run/event storage)
+.dagster_home/

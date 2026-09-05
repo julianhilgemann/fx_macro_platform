@@ -1,9 +1,12 @@
-"""Ingest orchestrator: fetch -> verbatim archive -> raw.source_fetch (Postgres).
+"""Ingest: fetch -> verbatim archive -> raw.source_fetch (Postgres).
 
 One row per *fetch event* per series (spec §5), byte-faithful with a sha256.
 Per-series fault tolerance: a failed fetch is recorded (http_status, null
-payload) rather than aborting the whole run (spec §8). Parsing to JSON happens
-at this boundary; the byte-faithful original is carried in `payload_raw`.
+payload) rather than aborting the run (spec §8). Parsing to JSON happens at this
+boundary; the byte-faithful original is carried in `payload_raw`.
+
+`land_source(source)` is the unit the Dagster ingest assets call (one asset per
+source); `run()` lands all sources and is what `run_pipeline.sh` invokes.
 """
 from __future__ import annotations
 
@@ -79,14 +82,13 @@ def _archive(res: FetchResult, fetch_ts: datetime) -> Path:
     return path
 
 
-def run() -> dict:
-    fetch_ts = datetime.now(timezone.utc)
-    as_of = fetch_ts.date()
+def _rows_for_source(source: str, fetch_ts: datetime) -> tuple[list[tuple], dict]:
+    """Fetch + archive every series of `source`; return (insert rows, stats)."""
     rows: list[tuple] = []
     ok = failed = 0
-    for series in SERIES:
+    for series in [s for s in SERIES if s.source == source]:
         try:
-            res = fetch_series(series, as_of)
+            res = fetch_series(series, fetch_ts.date())
             _archive(res, fetch_ts)
             payload = _normalize_payload(res)
             rows.append((
@@ -106,7 +108,16 @@ def run() -> dict:
                 Jsonb({}), fetch_ts, status, None, None, None, _sha256(b""), None,
             ))
             print(f"  FAIL {series.series_id:9s} [{series.source:10s}] {exc}")
+    return rows, {"source": source, "ok": ok, "failed": failed}
 
+
+def land_source(source: str) -> dict:
+    """Fetch + archive + insert one source's series into raw.source_fetch.
+
+    Returns stats; a single series failure never raises (spec §8).
+    """
+    fetch_ts = datetime.now(timezone.utc)
+    rows, stats = _rows_for_source(source, fetch_ts)
     landed = 0
     if rows:
         with psycopg.connect(host=PG_HOST, port=PG_PORT, dbname=PG_DB,
@@ -114,8 +125,21 @@ def run() -> dict:
             with conn.cursor() as cur:
                 cur.executemany(INSERT_SQL, rows)
         landed = len(rows)
-    print(f"[ingest] mode={FETCH_MODE}  {ok} ok, {failed} failed, {landed} rows -> {RAW_TABLE}")
-    return {"ok": ok, "failed": failed, "landed": landed}
+    stats["landed"] = landed
+    print(f"[ingest:{source}] mode={FETCH_MODE}  {stats['ok']} ok, {stats['failed']} failed, {landed} rows")
+    return stats
+
+
+def run() -> dict:
+    """Land all sources (run_pipeline.sh entry)."""
+    total = {"ok": 0, "failed": 0, "landed": 0, "sources": []}
+    for source in sorted({s.source for s in SERIES}):
+        st = land_source(source)
+        for k in ("ok", "failed", "landed"):
+            total[k] += st[k]
+        total["sources"].append(source)
+    print(f"[ingest] {total['ok']} ok, {total['failed']} failed, {total['landed']} rows -> {RAW_TABLE}")
+    return total
 
 
 def main() -> None:

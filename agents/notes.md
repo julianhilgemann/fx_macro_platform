@@ -54,7 +54,26 @@ infra, ingest, dbt, or the API. The authoritative spec is
     value describes), `known_at` (when it became known — FRED `realtime_start`,
     ECB/Bundesbank `fetched_at::date`), `fetched_at` (when we pulled it). Never
     collapse them; the fact grain is `(series_id, obs_date, known_at)`.
-11. **A host-local Postgres occupies `127.0.0.1:5432`** (Homebrew). Docker's
+11. **Dagster context params must NOT use `from __future__ import annotations`.**
+    With it, `context: AssetExecutionContext` becomes a string and Dagster raises
+    `DagsterInvalidDefinitionError: Cannot annotate 'context' parameter ...`. In
+    `orchestration/assets/*.py`, annotate context with the real class (no future
+    import). `AssetSpec.merge_attributes(deps=[...])` *appends* deps (doesn't
+    replace), which is how the ingest→staging link is added.
+12. **Dagster CLI needs an explicit module/file.** `dagster asset materialize`
+    alone fails with "Invalid set of CLI arguments for loading repository/job";
+    pass `-m orchestration.definitions`. `dagster dev` reads
+    `[tool.dagster] module_name` from `pyproject.toml`, so plain
+    `uv run dagster dev` works from the repo root.
+13. **Keep `DAGSTER_HOME` local for dev** (`DAGSTER_HOME="$PWD/.dagster_home"`,
+    gitignored) so run storage doesn't pollute `~/.dagster`. No `dagster.yaml`
+    → it defaults to SQLite run/event storage (fine locally; the spec §4 moves
+    Dagster metadata to Postgres in the Compose/k3s setup).
+14. **dbt-core is pinned by dagster-dbt.** `dagster-dbt 0.29` requires
+    `dbt-core 1.11.x`; adding dagster downgraded dbt-core from 1.12.0 → 1.11.14.
+    After any dagster/dbt dependency change, run `dbt parse` to regenerate the
+    manifest that `@dbt_assets(manifest=...)` reads.
+15. **A host-local Postgres occupies `127.0.0.1:5432`** (Homebrew). Docker's
     `0.0.0.0:5432` publish loses the loopback race to it, so any client
     connecting to `127.0.0.1:5432` hits the *local* cluster (which has no
     `platform_writer`/`platform_reader`). Fix: the Compose Postgres publishes on
