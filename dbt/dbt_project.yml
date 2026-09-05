@@ -23,7 +23,18 @@ models:
     marts:
       +schema: marts
       +materialized: table
+  elementary:
+    +schema: elementary
 
 seeds:
   fx_macro:
     +schema: meta
+
+# Elementary (spec §9): persist dbt artifacts/test results on every build, and
+# let Elementary's overridden dbt macros (e.g. test materialization) take effect.
+on-run-end:
+  - "{{ elementary.upload_dbt_artifacts() }}"
+
+dispatch:
+  - macro_namespace: dbt
+    search_order: ["elementary", "dbt"]

@@ -8,7 +8,7 @@ services:
       PLATFORM_WRITER_PASSWORD: ${PLATFORM_WRITER_PASSWORD:-writer_dev}
       PLATFORM_READER_PASSWORD: ${PLATFORM_READER_PASSWORD:-reader_dev}
     ports:
-      - "${POSTGRES_PORT:-5433}:5432"   # 5433: host has a local Postgres on 5432. Removed in prod (spec §14).
+      - "${POSTGRES_PORT:-5433}:5432"   # 5433: host has a local Postgres on 5432
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./sql:/docker-entrypoint-initdb.d:ro
@@ -18,5 +18,68 @@ services:
       timeout: 5s
       retries: 5
 
+  dagster-webserver:
+    build: { context: ., dockerfile: Dockerfile }
+    image: fx-macro-platform:latest
+    command: dagster-webserver -h 0.0.0.0 -p 3000
+    depends_on:
+      postgres: { condition: service_healthy }
+    environment: &dagster-env
+      FRED_API_KEY: ${FRED_API_KEY:-}
+      FX_FETCH_MODE: ${FX_FETCH_MODE:-synthetic}
+      FX_HISTORY_START: ${FX_HISTORY_START:-2024-01-01}
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_DB: warehouse
+      DAGSTER_POSTGRES_DB: dagster
+      PLATFORM_WRITER_USER: platform_writer
+      PLATFORM_WRITER_PASSWORD: ${PLATFORM_WRITER_PASSWORD:-writer_dev}
+      PLATFORM_READER_USER: platform_reader
+      PLATFORM_READER_PASSWORD: ${PLATFORM_READER_PASSWORD:-reader_dev}
+      DAGSTER_HOME: /opt/dagster_home
+    volumes:
+      - ./dagster.yaml:/opt/dagster_home/dagster.yaml:ro
+      - ./workspace.yaml:/opt/dagster_home/workspace.yaml:ro
+      - dagster_home:/opt/dagster_home
+    ports: ["3000:3000"]
+
+  dagster-daemon:
+    build: { context: ., dockerfile: Dockerfile }
+    image: fx-macro-platform:latest
+    command: dagster-daemon run
+    depends_on:
+      postgres: { condition: service_healthy }
+    environment: *dagster-env
+    volumes:
+      - ./dagster.yaml:/opt/dagster_home/dagster.yaml:ro
+      - ./workspace.yaml:/opt/dagster_home/workspace.yaml:ro
+      - dagster_home:/opt/dagster_home
+
+  api:
+    build: { context: ., dockerfile: Dockerfile }
+    image: fx-macro-platform:latest
+    command: uvicorn api.main:app --host 0.0.0.0 --port 8000
+    depends_on:
+      postgres: { condition: service_healthy }
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_DB: warehouse
+      PLATFORM_READER_USER: platform_reader
+      PLATFORM_READER_PASSWORD: ${PLATFORM_READER_PASSWORD:-reader_dev}
+    ports: ["8000:8000"]
+
+  metabase:
+    image: metabase/metabase
+    volumes:
+      - metabase_data:/metabase-data
+    ports: ["3001:3000"]
+    # Metabase's own metadata stays on its embedded H2 (in metabase_data).
+    # Add the warehouse as a data source in the UI:
+    #   PostgreSQL  host=postgres port=5432  db=warehouse
+    #   user=platform_reader  password=reader_dev
+
 volumes:
   pgdata:
+  dagster_home:
+  metabase_data:

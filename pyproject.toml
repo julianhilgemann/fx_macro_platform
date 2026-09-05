@@ -16,6 +16,8 @@ dependencies = [
     "dagster>=1.13.21",
     "dagster-webserver>=1.13.21",
     "dagster-dbt>=0.29.21",
+    "dagster-postgres>=0.29.21",
+    "elementary-data>=0.16,<0.20",
 ]
 
 [dependency-groups]

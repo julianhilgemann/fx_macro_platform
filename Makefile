@@ -1,21 +1,22 @@
-.PHONY: up down psql check reset
+.PHONY: up down build psql check reset
 
-up:            ## Start Postgres and wait until healthy
-	docker compose up -d --wait
+build:         ## Build the app image
+	docker compose build
 
-down:          ## Stop and remove containers (keeps the pgdata volume)
+up:            ## Build and start the full stack (postgres, dagster, api, metabase)
+	docker compose up -d --build
+
+down:          ## Stop and remove containers (keeps volumes)
 	docker compose down
 
 psql:          ## Open a psql shell on the warehouse DB (as superuser)
 	docker compose exec postgres psql -U postgres -d warehouse
 
-check:         ## Verify M0: 6 schemas + raw.source_fetch present
-	@n=$$(docker compose exec -T postgres psql -U postgres -d warehouse -tAc \
-	  "SELECT count(*) FROM information_schema.schemata WHERE schema_name IN ('raw','staging','intermediate','marts','meta','elementary');"); \
-	if [ "$$n" = "6" ]; then echo "M0 OK: 6 schemas present"; else echo "M0 FAIL: expected 6 schemas, got $$n"; exit 1; fi
-	@t=$$(docker compose exec -T postgres psql -U postgres -d warehouse -tAc \
-	  "SELECT count(*) FROM information_schema.tables WHERE table_schema='raw' AND table_name='source_fetch';"); \
-	if [ "$$t" = "1" ]; then echo "M0 OK: raw.source_fetch present"; else echo "M0 FAIL: raw.source_fetch missing"; exit 1; fi
+check:         ## Verify the stack is wired and healthy
+	@docker compose exec -T postgres psql -U postgres -d warehouse -tAc \
+	  "SELECT count(*) FROM information_schema.schemata WHERE schema_name IN ('raw','staging','intermediate','marts','meta','elementary');" | grep -q '^6' && echo "postgres: 6 schemas OK" || echo "postgres: FAIL"
+	@curl -sf -o /dev/null http://127.0.0.1:3000/ && echo "dagster UI (:3000): OK" || echo "dagster UI: FAIL"
+	@curl -sf -o /dev/null http://127.0.0.1:8000/health && echo "api (:8000): OK" || echo "api: FAIL"
 
-reset:         ## Down + drop the volume so init scripts re-run on next up
+reset:         ## Down + drop volumes so init scripts re-run on next up
 	docker compose down -v

@@ -1,11 +1,11 @@
 # Migration Plan — DuckDB slice → `platform-spec.md` v2
 
-> **Status:** M0–M3 + M1 complete — Postgres (Compose + schemas/roles +
-> `raw.source_fetch`), ingest → raw → dbt → FastAPI all running on Postgres, and
-> Dagster orchestrating the whole graph (ingest assets + `@dbt_assets` + daily
-> schedule) via `uv run dagster dev`. Remaining: Metabase/Elementary (M2+),
-> containerized Dagster in Compose + daily schedule unattended (M5), k3s (M7).
-> The DuckDB slice and its specs were removed.
+> **Status:** M0–M4 complete — Postgres + Dagster + dbt (with **Elementary**) +
+> FastAPI + **Metabase**, all running in Docker Compose (`make up` starts 5
+> services). Dagster metadata is in the `dagster` DB; the daily schedule
+> (`macro_pipeline_schedule`, 06:00 Europe/Berlin) ingests and rebuilds. Remaining:
+> an unattended week (M5), k3s/Tailscale (M7). The DuckDB slice and its specs
+> were removed.
 
 **Single source of truth:** [`platform-spec.md`](../platform-spec.md). That document
 is the architecture spec and the build contract. This file is *only* the plan for

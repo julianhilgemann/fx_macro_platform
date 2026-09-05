@@ -15,33 +15,49 @@ and environment gotchas for agents live in [`agents/notes.md`](agents/notes.md).
 |---|---|
 | M0 — Postgres + Compose + schemas + roles | ✅ done |
 | M1 — Dagster orchestration (ingest assets + dbt assets + schedule) | ✅ done |
-| M2–M3 — dbt → marts, FastAPI (all Postgres) | ✅ done |
-| M4+ — Astro chart, Metabase, Elementary, k3s/Tailscale | ⏳ pending |
+| M2 — dbt → marts + **Elementary** (data quality) | ✅ done |
+| M3 — FastAPI read layer (Postgres) | ✅ done |
+| M4 — **Metabase** (BI) | ✅ done |
+| Containerization — all services in Docker Compose | ✅ done |
+| M5+ — unattended schedule week, k3s/Tailscale | ⏳ pending |
 
-The pipeline is now **Postgres + Dagster** end-to-end (the earlier DuckDB slice was retired).
+The pipeline is **Postgres + Dagster + dbt/Elementary + FastAPI + Metabase**, fully
+containerized (the earlier DuckDB slice was retired).
 
-## Quick start
+## Quick start (containerized)
 
 ```bash
-make up                       # Postgres 16 via Docker Compose (host port 5433)
 cp .env.example .env          # set FRED_API_KEY for live mode (else synthetic)
-./scripts/run_pipeline.sh     # fetch -> raw.source_fetch -> dbt seed/run/test
-uv run python -m uvicorn api.main:app --host 127.0.0.1 --port 8000
+make up                       # builds the image and starts all 5 services
 ```
 
-Interactive API docs at <http://127.0.0.1:8000/docs>.
+| Service | URL | Notes |
+|---|---|---|
+| Dagster UI | <http://127.0.0.1:3000> | asset graph, runs, schedule |
+| API (OpenAPI) | <http://127.0.0.1:8000/docs> | `/v1/*` endpoints |
+| Metabase | <http://127.0.0.1:3001> | add warehouse: host `postgres`, db `warehouse`, user `platform_reader` |
+
+`make up` brings up `postgres`, `dagster-webserver`, `dagster-daemon`, `api`, and
+`metabase`. Dagster metadata lives in the `dagster` DB; the warehouse is `warehouse`.
+The daily schedule (`macro_pipeline_schedule`, 06:00 Europe/Berlin) ingests all
+sources and runs the full dbt build.
+
+### Local dev (no containers, for iteration)
+
+```bash
+make up                       # Postgres only (host port 5433)
+./scripts/run_pipeline.sh     # fetch -> raw.source_fetch -> dbt build (local)
+uv run python -m uvicorn api.main:app --host 127.0.0.1 --port 8000
+uv run dagster dev -m orchestration.definitions   # local Dagster UI
+```
 
 ## Orchestration (Dagster)
 
-```bash
-uv run dagster dev -m orchestration.definitions   # UI at http://127.0.0.1:3000
-```
-
 The asset graph (spec §8): `raw_fred` / `raw_ecb` / `raw_bundesbank` (ingest) →
 `stg_*` → `int_macro__observations_unioned` → `fct_macro_observation` (+`_latest`)
-and `dim_series`; the `series_catalog` seed feeds `dim_series`. A daily schedule
-runs the whole thing at 06:00 Europe/Berlin. In the UI: **Assets** for the graph,
-**Runs** for execution history, **Overview → Schedules** for the schedule.
+and `dim_series`; the `series_catalog` seed feeds `dim_series`, and Elementary's
+models materialize into the `elementary` schema. In the UI: **Assets** for the
+graph, **Runs** for execution history, **Overview → Schedules** for the schedule.
 
 ## API (spec §10)
 

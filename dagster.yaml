@@ -1,0 +1,37 @@
+# Dagster instance config (spec §14). Run/event/schedule storage lives in the
+# `dagster` Postgres DB; local artifacts (compute logs) in DAGSTER_HOME.
+# Both dagster-webserver and dagster-daemon share this file and DAGSTER_HOME.
+# Env vars use Dagster's {"env": "NAME"} form (set in docker-compose.yml).
+
+telemetry:
+  enabled: false
+
+run_storage:
+  module: dagster_postgres.run_storage
+  class: PostgresRunStorage
+  config:
+    postgres_db:
+      hostname: { env: POSTGRES_HOST }
+      username: { env: PLATFORM_WRITER_USER }
+      password: { env: PLATFORM_WRITER_PASSWORD }
+      db_name: { env: DAGSTER_POSTGRES_DB }
+
+event_log_storage:
+  module: dagster_postgres.event_log
+  class: PostgresEventLogStorage
+  config:
+    postgres_db:
+      hostname: { env: POSTGRES_HOST }
+      username: { env: PLATFORM_WRITER_USER }
+      password: { env: PLATFORM_WRITER_PASSWORD }
+      db_name: { env: DAGSTER_POSTGRES_DB }
+
+schedule_storage:
+  module: dagster_postgres.schedule_storage
+  class: PostgresScheduleStorage
+  config:
+    postgres_db:
+      hostname: { env: POSTGRES_HOST }
+      username: { env: PLATFORM_WRITER_USER }
+      password: { env: PLATFORM_WRITER_PASSWORD }
+      db_name: { env: DAGSTER_POSTGRES_DB }

@@ -1,0 +1,4 @@
+# Dagster workspace: the code location loaded by both dagster-webserver and
+# dagster-daemon (spec §14).
+load_from:
+  - module_name: orchestration.definitions

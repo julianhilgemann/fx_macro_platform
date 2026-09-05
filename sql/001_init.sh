@@ -68,4 +68,10 @@ psql -v ON_ERROR_STOP=1 \
       GRANT SELECT ON TABLES TO platform_reader;
 EOSQL
 
+# Dagster metadata DB (spec §4): let platform_writer create run/event/schedule
+# tables there. (PG15+ revokes CREATE on public from everyone by default.)
+psql -v ON_ERROR_STOP=1 --username "${POSTGRES_USER:-postgres}" --dbname dagster <<-EOSQL
+    GRANT CREATE ON SCHEMA public TO platform_writer;
+EOSQL
+
 echo "[init] M0 complete: roles, databases, schemas, raw.source_fetch"

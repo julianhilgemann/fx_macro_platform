@@ -46,4 +46,7 @@ class _FxMacroDbtTranslator(DagsterDbtTranslator):
     dagster_dbt_translator=_FxMacroDbtTranslator(),
 )
 def fx_macro_dbt_assets(context: AssetExecutionContext, dbt: DbtCliResource):
+    # NOTE: Elementary's on-run-end artifact upload fails to compile under a
+    # partial `--select`, so materialize the full dbt asset group (or run the
+    # daily schedule, which selects everything -> `--select fqn:*`).
     yield from dbt.cli(["build"], context=context).stream()

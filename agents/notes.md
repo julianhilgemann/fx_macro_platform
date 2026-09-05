@@ -80,3 +80,18 @@ infra, ingest, dbt, or the API. The authoritative spec is
     host port **5433** (`POSTGRES_PORT`); all host-side clients (`ingest/config.py`,
     dbt `profiles.yml`, the API) default to 5433. Verify with
     `lsof -nP -iTCP:5432 -sTCP:LISTEN` if a role-lookup ever mysteriously fails.
+16. **`dagster.yaml` env vars use `{"env": "VAR"}`, not `{{ env_var('VAR') }}`.**
+    The Jinja `{{ env_var(...) }}` form is left *literal* (→ `could not translate
+    host name "{{ env_var('POSTGRES_HOST'"` / `role ... does not exist`). `port`
+    must be an int — omit it to default 5432. In compose, the containerized
+    services connect to Postgres as `postgres:5432` (internal), not the host's
+    `5433`; set `POSTGRES_HOST: postgres`, `POSTGRES_PORT: "5432"` in their env.
+17. **Elementary's `on-run-end` hook breaks under a partial `dbt build --select`.**
+    dagster-dbt runs `dbt build --select <fqn>` for a single-asset materialization;
+    `elementary.upload_dbt_artifacts()` then fails to compile. `dbt build` (full)
+    and `dbt build --select fqn:*` both work. Materialize the full dbt group (or
+    run the schedule, which selects everything).
+18. **The Dockerfile bakes dbt packages + manifest**: `dbt deps && dbt parse` run
+    at build time (so `@dbt_assets` has a manifest and Elementary is installed).
+    `.dockerignore` must exclude `dbt/target`, `dbt/dbt_packages`, `.venv`,
+    `raw`, `warehouse`, `.env` — otherwise `COPY . .` drags in stale/local state.
