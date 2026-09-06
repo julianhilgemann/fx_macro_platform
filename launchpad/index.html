@@ -4,220 +4,10 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>FX Macro — Control Plane</title>
-<style>
-  :root {
-    --bg-top: #fbfbfd;
-    --bg-mid: #eef0f3;
-    --bg-bot: #e5e7eb;
-    --text: #1d1d1f;
-    --text-3: #86868b;
-    --glass: rgba(255, 255, 255, 0.52);
-    --glass-strong: rgba(255, 255, 255, 0.72);
-    --stroke: rgba(255, 255, 255, 0.65);
-    --stroke-soft: rgba(0, 0, 0, 0.07);
-    --green: #30d158;
-    --amber: #ff9f0a;
-    --shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 16px 40px -22px rgba(0, 0, 0, 0.18);
-    --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
-  }
-
-  * { box-sizing: border-box; }
-
-  html, body {
-    margin: 0;
-    padding: 0;
-    min-height: 100%;
-    color: var(--text);
-    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text",
-                 "Helvetica Neue", system-ui, sans-serif;
-    -webkit-font-smoothing: antialiased;
-    text-rendering: optimizeLegibility;
-  }
-
-  body {
-    background:
-      radial-gradient(140% 100% at 50% -10%, var(--bg-top) 0%, var(--bg-mid) 46%, var(--bg-bot) 100%);
-    background-attachment: fixed;
-  }
-
-  /* ---------- soft neutral ambient light ---------- */
-  .bg {
-    position: fixed;
-    inset: 0;
-    z-index: 0;
-    overflow: hidden;
-    pointer-events: none;
-  }
-  .blob {
-    position: absolute;
-    border-radius: 50%;
-    filter: blur(120px);
-    will-change: transform;
-  }
-  .blob.b1 {
-    width: 640px; height: 640px; left: -160px; top: -200px;
-    background: radial-gradient(circle, rgba(255, 255, 255, 0.9), transparent 70%);
-    animation: drift1 30s var(--ease-out) infinite alternate;
-  }
-  .blob.b2 {
-    width: 560px; height: 560px; right: -140px; top: 10%;
-    background: radial-gradient(circle, rgba(255, 255, 255, 0.75), transparent 70%);
-    animation: drift2 36s var(--ease-out) infinite alternate;
-  }
-  .blob.b3 {
-    width: 520px; height: 520px; left: 30%; bottom: -260px;
-    background: radial-gradient(circle, rgba(0, 0, 0, 0.045), transparent 70%);
-    animation: drift1 40s var(--ease-out) infinite alternate-reverse;
-  }
-
-  @keyframes drift1 { to { transform: translate(60px, 40px) scale(1.08); } }
-  @keyframes drift2 { to { transform: translate(-50px, 60px) scale(1.1); } }
-
-  /* ---------- layout ---------- */
-  .stage {
-    position: relative;
-    z-index: 1;
-    min-height: 100vh;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    padding: 48px 24px;
-  }
-
-  @keyframes pulse {
-    0%   { box-shadow: 0 0 0 0 rgba(48, 209, 88, 0.4); }
-    70%  { box-shadow: 0 0 0 7px rgba(48, 209, 88, 0); }
-    100% { box-shadow: 0 0 0 0 rgba(48, 209, 88, 0); }
-  }
-
-  /* ---------- grid ---------- */
-  .grid {
-    display: grid;
-    grid-template-columns: repeat(6, minmax(0, 1fr));
-    gap: 14px;
-    width: min(1120px, 100%);
-    perspective: 1200px;
-  }
-
-  /* ---------- tile ---------- */
-  .tile {
-    --mx: 50%;
-    --my: 50%;
-    position: relative;
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-    padding: 14px 14px 13px;
-    border-radius: 18px;
-    text-decoration: none;
-    color: inherit;
-    background: linear-gradient(145deg, rgba(255,255,255,0.72), rgba(255,255,255,0.4));
-    backdrop-filter: blur(26px) saturate(140%);
-    -webkit-backdrop-filter: blur(26px) saturate(140%);
-    border: 1px solid var(--stroke);
-    box-shadow: var(--shadow), inset 0 1px 0 rgba(255, 255, 255, 0.9);
-    overflow: hidden;
-    will-change: transform;
-    transition: box-shadow 0.7s var(--ease-out), border-color 0.7s var(--ease-out);
-    animation: rise 0.8s var(--ease-out) backwards;
-    animation-delay: calc(var(--i) * 60ms);
-  }
-  .tile:hover {
-    border-color: rgba(255, 255, 255, 0.95);
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05), 0 30px 60px -26px rgba(0, 0, 0, 0.24),
-                inset 0 1px 0 rgba(255, 255, 255, 1);
-  }
-  /* cursor-following specular highlight */
-  .tile::after {
-    content: "";
-    position: absolute;
-    inset: 0;
-    border-radius: inherit;
-    background: radial-gradient(340px circle at var(--mx) var(--my),
-                rgba(255, 255, 255, 0.55), transparent 48%);
-    opacity: 0;
-    transition: opacity 0.6s var(--ease-out);
-    pointer-events: none;
-  }
-  .tile:hover::after { opacity: 1; }
-
-  .icon {
-    width: 40px; height: 40px;
-    border-radius: 11px;
-    display: grid; place-items: center;
-    color: var(--text);
-    background: linear-gradient(145deg, rgba(255,255,255,0.95), rgba(255,255,255,0.6));
-    border: 1px solid var(--stroke);
-    box-shadow: 0 8px 20px -10px rgba(0,0,0,0.2), inset 0 1px 0 rgba(255,255,255,0.95);
-    position: relative;
-    transition: color 0.7s var(--ease-out);
-  }
-  .tile:hover .icon { color: var(--amber); }
-  .icon svg { width: 19px; height: 19px; position: relative; z-index: 1; }
-  .icon::after {
-    content: "";
-    position: absolute;
-    inset: 0;
-    border-radius: inherit;
-    background: linear-gradient(120deg, rgba(255,255,255,0.7), transparent 46%);
-    pointer-events: none;
-  }
-
-  .meta { display: flex; flex-direction: column; gap: 3px; position: relative; z-index: 1; }
-  .name { font-size: 14px; font-weight: 600; letter-spacing: -0.01em; }
-  .role { font-size: 11px; color: var(--text-3); }
-
-  .status {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    margin-top: auto;
-    font-size: 10.5px;
-    letter-spacing: 0.01em;
-    position: relative;
-    z-index: 1;
-  }
-  .status .dot {
-    width: 7px; height: 7px; border-radius: 50%;
-    background: var(--text-3);
-    transition: background 0.3s ease, box-shadow 0.3s ease;
-  }
-  .status .label { color: var(--text-3); }
-
-  .status[data-state="online"] .dot {
-    background: var(--green);
-    box-shadow: 0 0 0 3px rgba(48, 209, 88, 0.18);
-  }
-  .status[data-state="online"] .label { color: #1f8a4c; }
-  .status[data-state="offline"] .dot { background: rgba(0,0,0,0.22); }
-  .status[data-state="checking"] .dot {
-    background: var(--amber);
-    animation: pulse 1.2s ease-out infinite;
-  }
-
-  @keyframes rise {
-    from { opacity: 0; transform: translateY(14px); }
-    to   { opacity: 1; transform: translateY(0); }
-  }
-
-  @media (max-width: 1100px) {
-    .grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-  }
-  @media (max-width: 720px) {
-    .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  }
-  @media (max-width: 460px) {
-    .grid { grid-template-columns: 1fr; }
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    * { animation: none !important; transition: none !important; }
-  }
-</style>
+<link rel="stylesheet" href="design-system/design-system.css" />
 </head>
 <body>
-  <div class="bg" aria-hidden="true">
+  <div class="ambient" aria-hidden="true">
     <div class="blob b1"></div>
     <div class="blob b2"></div>
     <div class="blob b3"></div>
@@ -227,9 +17,11 @@
     <div class="grid" id="grid"></div>
   </main>
 
-<script>
+  <script src="design-system/design-system.js"></script>
+  <script>
   // ---------------------------------------------------------------
-  // Config-driven tiles: add a service = add one object here.
+  // Page content (kept here on purpose — this is configuration, not
+  // the design system). Add a service = add one object here.
   // Keep href/health in sync with docker-compose.yml (host ports).
   // ---------------------------------------------------------------
   const TILES = [
@@ -250,17 +42,17 @@
     rocket:   `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09Z"/><path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2Z"/><path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0"/><path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5"/></svg>`,
     package:  `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="M3.3 7 12 12l8.7-5"/><path d="M12 22V12"/></svg>`,
     graph:    `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="5" r="2.5"/><circle cx="19" cy="5" r="2.5"/><circle cx="12" cy="19" r="2.5"/><path d="M7.5 6.5h9M6.6 7.2 10.9 17M17.4 7.2 13.1 17"/></svg>`,
-    forecast: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M5 15l4-4 3 2 4-5"/><path d="M13 15l2 2 4-6"/><path d="M19 15v-2h2"/></svg>`,
+    forecast: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>`,
     database: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14a9 3 0 0 0 18 0V5"/><path d="M3 12a9 3 0 0 0 18 0"/></svg>`,
   };
 
   const grid = document.getElementById("grid");
   const DEMO = new URLSearchParams(location.search).has("demo");
-  const REDUCED = matchMedia("(prefers-reduced-motion: reduce)").matches;
 
   TILES.forEach((t, i) => {
     const el = document.createElement("a");
     el.className = "tile";
+    el.setAttribute("data-tilt", "");
     el.style.setProperty("--i", i);
     el.href = t.href;
     el.target = "_blank";
@@ -275,81 +67,8 @@
       <div class="status" data-state="checking"><span class="dot"></span><span class="label">checking</span></div>
     `;
 
-    // --- buttery-smooth tilt + specular light (time-based, frame-rate independent) ---
-    const cur = { x: 0, y: 0, lift: 0, liftV: 0, mx: 0, my: 0, active: false, last: 0 };
-    const target = { x: 0, y: 0, lift: 0, mx: 0, my: 0, hover: false };
-
-    // Cursor tilt + glow use exponential smoothing (fast, decelerating).
-    const TAU_TILT = 85; // ms
-    const TAU_GLOW = 55; // ms
-    // Vertical lift uses a critically-damped spring for a soft ease-in/ease-out.
-    const STIFFNESS = 170;
-    const DAMPING = 2 * Math.sqrt(STIFFNESS);
-
-    function frame(now) {
-      if (!cur.last) cur.last = now;
-      const dt = Math.min(now - cur.last, 64); // clamp tab-switch gaps
-      cur.last = now;
-      const s = dt / 1000;
-
-      const kTilt = 1 - Math.exp(-dt / TAU_TILT);
-      const kGlow = 1 - Math.exp(-dt / TAU_GLOW);
-
-      cur.x += (target.x - cur.x) * kTilt;
-      cur.y += (target.y - cur.y) * kTilt;
-      cur.mx += (target.mx - cur.mx) * kGlow;
-      cur.my += (target.my - cur.my) * kGlow;
-
-      // spring: a = -k·(x − target) − c·v
-      cur.liftV += (-STIFFNESS * (cur.lift - target.lift) - DAMPING * cur.liftV) * s;
-      cur.lift += cur.liftV * s;
-
-      el.style.transform =
-        `perspective(900px) translateY(${cur.lift.toFixed(2)}px) rotateX(${(-cur.y * 5).toFixed(3)}deg) rotateY(${(cur.x * 5).toFixed(3)}deg)`;
-      el.style.setProperty("--mx", cur.mx.toFixed(1) + "px");
-      el.style.setProperty("--my", cur.my.toFixed(1) + "px");
-
-      const settled = !target.hover &&
-        Math.abs(cur.x) < 0.001 && Math.abs(cur.y) < 0.001 &&
-        Math.abs(cur.lift) < 0.01 && Math.abs(cur.liftV) < 0.01;
-      if (settled) {
-        cur.active = false;
-        cur.lift = 0;
-        cur.liftV = 0;
-        el.style.transform = "";
-      } else {
-        requestAnimationFrame(frame);
-      }
-    }
-
-    el.addEventListener("pointerenter", (e) => {
-      target.hover = true;
-      target.lift = -6;
-      const r = el.getBoundingClientRect();
-      target.mx = e.clientX - r.left;
-      target.my = e.clientY - r.top;
-      if (!cur.active && !REDUCED) { cur.active = true; requestAnimationFrame(frame); }
-    });
-
-    el.addEventListener("pointermove", (e) => {
-      const r = el.getBoundingClientRect();
-      const px = e.clientX - r.left;
-      const py = e.clientY - r.top;
-      target.x = px / r.width - 0.5;
-      target.y = py / r.height - 0.5;
-      target.mx = px;
-      target.my = py;
-      if (!cur.active && !REDUCED) { cur.active = true; requestAnimationFrame(frame); }
-    });
-
-    el.addEventListener("pointerleave", () => {
-      target.hover = false;
-      target.lift = 0;
-      target.x = 0;
-      target.y = 0;
-    });
-
     grid.appendChild(el);
+    FXMacro.initTilt(el);
 
     const statusEl = el.querySelector(".status");
     if (DEMO || !t.health) {
@@ -377,6 +96,6 @@
       clearTimeout(t);
     }
   }
-</script>
+  </script>
 </body>
 </html>

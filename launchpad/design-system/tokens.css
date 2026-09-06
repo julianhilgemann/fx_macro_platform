@@ -1,0 +1,129 @@
+/* ============================================================================
+   FX Macro — Design System · Tokens (atoms)
+   ----------------------------------------------------------------------------
+   The single source of truth for the platform's visual language: color,
+   spacing, type, radius, elevation, motion, and depth. Components consume
+   tokens; never hardcode a raw value in a component or page.
+
+   Convention: numeric suffixes on tint tokens are the opacity percentage
+   (e.g. --glass-72 = white @ 72%, --shade-45 = black @ 4.5%).
+   ========================================================================== */
+
+:root {
+  /* ---------- palette (raw primitives) ----------
+     The glass/shade tint ramps below are pre-baked from these anchors. */
+  --color-white: #ffffff;
+  --color-black: #000000;
+
+  --gray-50:  #fbfbfd;
+  --gray-100: #eef0f3;
+  --gray-200: #e5e7eb;
+  --gray-600: #86868b;
+  --gray-900: #1d1d1f;
+
+  --green-500: #30d158;
+  --green-700: #1f8a4c;
+  --amber-500: #ff9f0a;
+
+  /* ---------- semantic color ---------- */
+  --bg-top: var(--gray-50);        /* page gradient · top */
+  --bg-mid: var(--gray-100);       /* page gradient · middle */
+  --bg-bot: var(--gray-200);       /* page gradient · bottom */
+  --text: var(--gray-900);
+  --text-muted: var(--gray-600);
+
+  --accent: var(--amber-500);      /* hover / attention accent */
+  --success: var(--green-500);     /* live / online */
+  --success-fg: var(--green-700);  /* online label text */
+  --warning: var(--amber-500);     /* checking / attention */
+
+  /* ---------- glass (white tints) ---------- */
+  --glass-40:  rgba(255, 255, 255, 0.40);
+  --glass-55:  rgba(255, 255, 255, 0.55);
+  --glass-60:  rgba(255, 255, 255, 0.60);
+  --glass-65:  rgba(255, 255, 255, 0.65);
+  --glass-70:  rgba(255, 255, 255, 0.70);
+  --glass-72:  rgba(255, 255, 255, 0.72);
+  --glass-75:  rgba(255, 255, 255, 0.75);
+  --glass-90:  rgba(255, 255, 255, 0.90);
+  --glass-95:  rgba(255, 255, 255, 0.95);
+  --glass-100: rgba(255, 255, 255, 1.00);
+
+  /* ---------- shade (black tints) ---------- */
+  --shade-4:  rgba(0, 0, 0, 0.04);
+  --shade-5:  rgba(0, 0, 0, 0.05);
+  --shade-18: rgba(0, 0, 0, 0.18);
+  --shade-20: rgba(0, 0, 0, 0.20);
+  --shade-22: rgba(0, 0, 0, 0.22);
+  --shade-24: rgba(0, 0, 0, 0.24);
+  --shade-45: rgba(0, 0, 0, 0.045);
+
+  /* ---------- status tint (success glow) ---------- */
+  --success-18: rgba(48, 209, 88, 0.18);
+  --success-40: rgba(48, 209, 88, 0.40);
+
+  /* ---------- elevation ---------- */
+  --shadow-rest:  0 1px 2px var(--shade-4), 0 16px 40px -22px var(--shade-18);
+  --shadow-hover: 0 2px 4px var(--shade-5), 0 30px 60px -26px var(--shade-24);
+  --shadow-icon:  0 8px 20px -10px var(--shade-20);
+  --inset-rest:  inset 0 1px 0 var(--glass-90);
+  --inset-icon:  inset 0 1px 0 var(--glass-95);
+  --inset-hover: inset 0 1px 0 var(--glass-100);
+
+  /* ---------- spacing ---------- */
+  --space-1: 3px;
+  --space-2: 6px;
+  --space-3: 10px;
+  --space-4: 13px;
+  --space-5: 14px;
+  --space-6: 24px;
+  --space-8: 48px;
+
+  /* ---------- radius ---------- */
+  --radius-md: 11px;
+  --radius-lg: 18px;
+  --radius-round: 50%;
+
+  /* ---------- typography ---------- */
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text",
+               "Helvetica Neue", system-ui, sans-serif;
+  --text-xs: 10.5px;
+  --text-sm: 11px;
+  --text-md: 14px;
+
+  /* ---------- size ---------- */
+  --size-icon: 40px;
+  --size-glyph: 19px;
+  --size-dot: 7px;
+  --grid-max: 1120px;
+  --tile-min: 130px;
+
+  /* ---------- motion ---------- */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --dur-fast: 0.3s;
+  --dur-med: 0.6s;
+  --dur-slow: 0.7s;
+  --dur-rise: 0.8s;
+  --dur-pulse: 1.2s;
+  --dur-drift-a: 30s;
+  --dur-drift-b: 36s;
+  --dur-drift-c: 40s;
+  --rise-distance: 14px;
+  --pulse-spread: 7px;
+  --stagger-tile: 60ms;
+
+  /* ---------- depth / blur ---------- */
+  --blur-glass: 26px;
+  --blur-ambient: 120px;
+  --perspective-stage: 1200px;
+
+  /* ---------- tilt interaction (consumed by design-system.js) ---------- */
+  --tilt-perspective: 900px;
+  --tilt-deg: 5deg;
+  --tilt-lift: -6px;
+
+  /* ---------- z-index ---------- */
+  --z-bg: 0;
+  --z-stage: 1;
+  --z-overlay: 1;
+}

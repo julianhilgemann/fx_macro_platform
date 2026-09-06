@@ -1,0 +1,28 @@
+/* ============================================================================
+   FX Macro — Design System · Base (elements)
+   ----------------------------------------------------------------------------
+   Reset and default element styling. Nothing component-specific here; page
+   scaffolding starts with this layer.
+   ========================================================================== */
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  min-height: 100%;
+  color: var(--text);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  background:
+    radial-gradient(140% 100% at 50% -10%, var(--bg-top) 0%, var(--bg-mid) 46%, var(--bg-bot) 100%);
+  background-attachment: fixed;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { animation: none !important; transition: none !important; }
+}

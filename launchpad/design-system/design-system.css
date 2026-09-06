@@ -1,0 +1,12 @@
+/* ============================================================================
+   FX Macro — Design System · Entry
+   ----------------------------------------------------------------------------
+   Link this one file from a page. It loads the three layers in order:
+     tokens.css     → atoms (single source of truth for values)
+     base.css       → element reset + defaults
+     components.css → molecules (ambient, stage, grid, tile, icon, status)
+   ========================================================================== */
+
+@import "tokens.css";
+@import "base.css";
+@import "components.css";
