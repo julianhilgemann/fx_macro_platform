@@ -21,8 +21,8 @@ and environment gotchas for agents live in [`agents/notes.md`](agents/notes.md).
 | Containerization — all services in Docker Compose | ✅ done |
 | M5+ — unattended schedule week, k3s/Tailscale | ⏳ pending |
 
-The pipeline is **Postgres + Dagster + dbt/Elementary + FastAPI + Metabase**, fully
-containerized (the earlier DuckDB slice was retired).
+The pipeline is **Postgres + Dagster + dbt/Elementary + FastAPI + Metabase +
+Streamlit**, fully containerized (the earlier DuckDB slice was retired).
 
 ## Quick start (containerized)
 
@@ -36,11 +36,14 @@ make up                       # builds the image and starts all 5 services
 | Launchpad | <http://127.0.0.1:8080> | dev navigation hub → all services below |
 | Dagster UI | <http://127.0.0.1:3000> | asset graph, runs, schedule |
 | API (OpenAPI) | <http://127.0.0.1:8000/docs> | `/v1/*` endpoints |
+| Dashboard | <http://127.0.0.1:8501> | Streamlit forecasting studio (auto-ARIMA / ETS, walk-forward CV, diagnostics) |
 | Metabase | <http://127.0.0.1:3001> | add warehouse: host `postgres`, db `warehouse`, user `platform_reader` |
 | Elementary | <http://127.0.0.1:8081> | data-quality report (regenerates every 30 min) |
+| dbt deps | <http://127.0.0.1:8082> | `dbt deps` install report (regenerates every 5 min) |
+| dbt docs | <http://127.0.0.1:8083> | native dbt lineage DAG + catalog (refreshed after every build) |
 
 `make up` brings up `postgres`, `dagster-webserver`, `dagster-daemon`, `api`,
-`metabase`, `elementary-report`, and the `launchpad`. Dagster metadata lives in
+`metabase`, `dashboard` (Streamlit), `elementary-report`, and the `launchpad`. Dagster metadata lives in
 the `dagster` DB; the warehouse is `warehouse`.
 The daily schedule (`macro_pipeline_schedule`, 06:00 Europe/Berlin) ingests all
 sources and runs the full dbt build.
@@ -91,7 +94,25 @@ Upstream endpoints and response shapes are documented in
 ingest/     fetch clients -> Postgres raw.source_fetch (spec §5)
 dbt/        staging -> intermediate -> marts (Postgres), series_catalog seed
 api/        FastAPI read layer over marts (platform_reader)
+dashboard/  Streamlit forecasting studio (separate image, reads marts as platform_reader)
 sql/        001_init.sh — roles, databases, schemas, raw landing table
 agents/     environment facts + gotchas for agentic builds
 docs/       api-calls.md · migration-plan.md
 ```
+
+## Dashboard (Streamlit)
+
+A separate container (`dashboard/`) with the scientific stack (statsmodels,
+scikit-learn, scipy, Plotly). It reads `marts.dim_series` and
+`marts.fct_macro_observation_latest` directly as `platform_reader`, the same as
+Metabase. Pick a series, hit **Run model**, and it will:
+
+- calendar-align the series (business-day / month-start, forward-fill gaps);
+- fit a model — AIC-selected auto-ARIMA (SARIMAX), Holt-Winters ETS, or a
+  naive-drift baseline;
+- evaluate it with **walk-forward (rolling-origin) cross-validation**
+  (expanding or sliding window, always out-of-sample);
+- report pooled error metrics (MSE, RMSE, MAE, MAPE, sMAPE, MASE, R²) and a
+  diagnostic battery (ADF/KPSS, Ljung-Box, Jarque-Bera, Engle ARCH,
+  Durbin-Watson, residual ACF/PACF);
+- plot the multi-period forecast with prediction intervals over the history.

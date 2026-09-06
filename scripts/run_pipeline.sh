@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# The pipeline: ingest (fetch -> raw.source_fetch) -> dbt seed -> dbt run -> dbt test.
+# The pipeline: ingest (fetch -> raw.source_fetch) -> dbt seed -> dbt run ->
+# dbt test -> dbt docs generate (lineage DAG + catalog, local-dev parity).
 # Ingestion is plain Python; dbt only transforms the already-landed raw table.
 # (Dagster replaces this script at M1+; spec §8.)
 set -euo pipefail
@@ -22,7 +23,10 @@ uv run dbt seed --project-dir dbt --profiles-dir dbt
 echo "==> [3/4] dbt run"
 uv run dbt run --project-dir dbt --profiles-dir dbt
 
-echo "==> [4/4] dbt test"
+echo "==> [4/5] dbt test"
 uv run dbt test --project-dir dbt --profiles-dir dbt
+
+echo "==> [5/5] dbt docs generate (lineage DAG + catalog -> dbt/target)"
+uv run dbt docs generate --project-dir dbt --profiles-dir dbt
 
 echo "==> pipeline complete."

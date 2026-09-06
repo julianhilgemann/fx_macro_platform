@@ -96,6 +96,28 @@ def parse_bundesbank_csv(
     return records
 
 
+def _sdmx_period_to_date(period: str) -> date | None:
+    """Map an SDMX TIME_PERIOD to a calendar date.
+
+    Full dates pass through; monthly (``2024-01``) and quarterly (``2024-Q1``)
+    periods resolve to their first day to match the FRED monthly/quarterly
+    convention (first-of-period). Returns None for anything unrecognised.
+    """
+    p = period.strip()
+    if _ISO_DATE.match(p):
+        return date.fromisoformat(p)
+    m = re.match(r"^(\d{4})-(\d{2})$", p)
+    if m:
+        return date(int(m.group(1)), int(m.group(2)), 1)
+    q = re.match(r"^(\d{4})-Q([1-4])$", p)
+    if q:
+        return date(int(q.group(1)), (int(q.group(2)) - 1) * 3 + 1, 1)
+    y = re.match(r"^(\d{4})$", p)
+    if y:
+        return date(int(y.group(1)), 1, 1)
+    return None
+
+
 def parse_ecb_sdmx_csv(
     text: str,
     *,
@@ -108,18 +130,21 @@ def parse_ecb_sdmx_csv(
 
     Wide SDMX CSV with a header row; the observation columns are TIME_PERIOD and
     OBS_VALUE. Key ECB rate series are change-point (one row per rate change) —
-    the daily panel forward-fills them into step functions.
+    the daily panel forward-fills them into step functions. Monthly/quarterly
+    series (HICP, LFS, MNA) arrive as ``YYYY-MM`` / ``YYYY-Qn`` periods and are
+    normalised to first-of-period dates.
     """
     records: list[Observation] = []
     for row in csv.DictReader(io.StringIO(text)):
         period = (row.get("TIME_PERIOD") or "").strip()
-        if not _ISO_DATE.match(period):
+        ref = _sdmx_period_to_date(period)
+        if ref is None:
             continue
         records.append(
             Observation(
                 source=source,
                 series_id=series_id,
-                reference_period=date.fromisoformat(period),
+                reference_period=ref,
                 value=_parse_value(row.get("OBS_VALUE")),
                 fetch_timestamp=fetch_timestamp,
                 raw_file=raw_file,

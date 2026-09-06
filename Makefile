@@ -17,6 +17,8 @@ check:         ## Verify the stack is wired and healthy
 	  "SELECT count(*) FROM information_schema.schemata WHERE schema_name IN ('raw','staging','intermediate','marts','meta','elementary');" | grep -q '^6' && echo "postgres: 6 schemas OK" || echo "postgres: FAIL"
 	@curl -sf -o /dev/null http://127.0.0.1:3000/ && echo "dagster UI (:3000): OK" || echo "dagster UI: FAIL"
 	@curl -sf -o /dev/null http://127.0.0.1:8000/health && echo "api (:8000): OK" || echo "api: FAIL"
+	@curl -sf -o /dev/null http://127.0.0.1:8501/_stcore/health && echo "dashboard (:8501): OK" || echo "dashboard: FAIL"
+	@curl -sf -o /dev/null http://127.0.0.1:8083/ && echo "dbt docs (:8083): OK" || echo "dbt docs: FAIL"
 
 reset:         ## Down + drop volumes so init scripts re-run on next up
 	docker compose down -v

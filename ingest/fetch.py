@@ -124,6 +124,24 @@ def _month_ends(start: date, end: date):
         d = nxt
 
 
+def _week_ends(start: date, end: date):
+    # Weekly cadence anchored on Fridays, closest to provider convention.
+    d = start - timedelta(days=start.weekday()) + timedelta(days=4)  # first Friday
+    while d <= end:
+        if d >= start:
+            yield d
+        d += timedelta(days=7)
+
+
+def _quarter_ends(start: date, end: date):
+    d = date(start.year, ((start.month - 1) // 3) * 3 + 1, 1)
+    while d <= end:
+        if d >= start:
+            yield d
+        d = (d.replace(day=28) + timedelta(days=100)).replace(day=1)
+        d = date(d.year, ((d.month - 1) // 3) * 3 + 1, 1)
+
+
 _SYNTH_LEVELS = {
     "eurusd_spot":     (1.08, 0.004),
     "usd_broad_index": (120.0, 0.3),
@@ -145,11 +163,13 @@ _SYNTH_RATES = {
 
 def synth_observations(series: Series, as_of: date) -> list[dict]:
     """Deterministic-ish synthetic history shaped like FRED observations."""
-    dates = (
-        list(_month_ends(HISTORY_START, as_of))
-        if series.frequency == "monthly"
-        else list(_business_days(HISTORY_START, as_of))
-    )
+    gen = {
+        "daily": _business_days,
+        "weekly": _week_ends,
+        "monthly": _month_ends,
+        "quarterly": _quarter_ends,
+    }.get(series.frequency, _business_days)
+    dates = list(gen(HISTORY_START, as_of))
 
     rng = random.Random(series.series_id)
     values: list[float] = []

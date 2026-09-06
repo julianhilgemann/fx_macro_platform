@@ -41,6 +41,7 @@ services:
       - ./dagster.yaml:/opt/dagster_home/dagster.yaml:ro
       - ./workspace.yaml:/opt/dagster_home/workspace.yaml:ro
       - dagster_home:/opt/dagster_home
+      - dbt_target:/opt/app/dbt/target   # share dbt docs (manifest/catalog) with the dbt-docs server
     ports: ["3000:3000"]
 
   dagster-daemon:
@@ -54,6 +55,7 @@ services:
       - ./dagster.yaml:/opt/dagster_home/dagster.yaml:ro
       - ./workspace.yaml:/opt/dagster_home/workspace.yaml:ro
       - dagster_home:/opt/dagster_home
+      - dbt_target:/opt/app/dbt/target   # share dbt docs (manifest/catalog) with the dbt-docs server
 
   api:
     build: { context: ., dockerfile: Dockerfile }
@@ -68,6 +70,20 @@ services:
       PLATFORM_READER_USER: platform_reader
       PLATFORM_READER_PASSWORD: ${PLATFORM_READER_PASSWORD:-reader_dev}
     ports: ["8000:8000"]
+
+  dashboard:
+    build: { context: ./dashboard, dockerfile: Dockerfile }
+    image: fx-macro-dashboard:latest
+    depends_on:
+      postgres: { condition: service_healthy }
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_DB: warehouse
+      PLATFORM_READER_USER: platform_reader
+      PLATFORM_READER_PASSWORD: ${PLATFORM_READER_PASSWORD:-reader_dev}
+    ports: ["8501:8501"]   # Streamlit forecasting studio
+    restart: unless-stopped
 
   metabase:
     image: metabase/metabase
@@ -98,7 +114,28 @@ services:
       PLATFORM_WRITER_PASSWORD: ${PLATFORM_WRITER_PASSWORD:-writer_dev}
     ports: ["8081:8081"]   # Elementary observability report
 
+  dbt-deps-report:
+    image: fx-macro-platform:latest
+    command: python /opt/app/scripts/dbt_deps_report.py
+    environment:
+      DBT_DEPS_REPORT_DIR: /reports
+      DBT_DEPS_PORT: "8082"
+      DBT_DEPS_REFRESH_SECONDS: "300"
+    volumes:
+      - ./scripts/dbt_deps_report.py:/opt/app/scripts/dbt_deps_report.py:ro
+      - ./dbt:/opt/app/dbt
+      - ./reports/dbt-deps:/reports
+    ports: ["8082:8082"]   # dbt deps install report
+
+  dbt-docs:
+    image: fx-macro-platform:latest
+    command: sh -c "mkdir -p /opt/app/dbt/target && python -m http.server 8083 --bind 0.0.0.0 --directory /opt/app/dbt/target"
+    volumes:
+      - dbt_target:/opt/app/dbt/target
+    ports: ["8083:8083"]   # dbt lineage DAG + catalog (refreshed by every build)
+
 volumes:
   pgdata:
   dagster_home:
   metabase_data:
+  dbt_target:

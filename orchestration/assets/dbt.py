@@ -50,3 +50,11 @@ def fx_macro_dbt_assets(context: AssetExecutionContext, dbt: DbtCliResource):
     # partial `--select`, so materialize the full dbt asset group (or run the
     # daily schedule, which selects everything -> `--select fqn:*`).
     yield from dbt.cli(["build"], context=context).stream()
+
+    # Refresh the lineage DAG + catalog after every successful build so the
+    # shared `dbt/target` volume stays current for the dbt-docs server (:8083).
+    docs_invocation = dbt.cli(["docs", "generate"], context=context)
+    docs_invocation.wait()
+    if not docs_invocation.is_successful():
+        raise RuntimeError(f"dbt docs generate failed: {docs_invocation.get_error()}")
+    context.log.info("dbt docs generated -> dbt/target (manifest.json + catalog.json)")

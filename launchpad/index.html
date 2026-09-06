@@ -10,7 +10,6 @@
     --bg-mid: #eef0f3;
     --bg-bot: #e5e7eb;
     --text: #1d1d1f;
-    --text-2: #6e6e73;
     --text-3: #86868b;
     --glass: rgba(255, 255, 255, 0.52);
     --glass-strong: rgba(255, 255, 255, 0.72);
@@ -86,54 +85,6 @@
     padding: 48px 24px;
   }
 
-  header {
-    text-align: center;
-    margin-bottom: 44px;
-    animation: rise 0.8s var(--ease-out) backwards;
-  }
-  .logo {
-    width: 62px; height: 62px;
-    margin: 0 auto 18px;
-    display: grid; place-items: center;
-    border-radius: 18px;
-    font-weight: 650;
-    font-size: 19px;
-    letter-spacing: -0.02em;
-    color: var(--text);
-    background: linear-gradient(145deg, rgba(255,255,255,0.9), rgba(255,255,255,0.55));
-    border: 1px solid var(--stroke);
-    box-shadow: var(--shadow), inset 0 1px 0 rgba(255,255,255,0.9);
-    position: relative;
-  }
-  .logo::after {
-    content: "";
-    position: absolute;
-    inset: 0;
-    border-radius: inherit;
-    background: linear-gradient(120deg, rgba(255,255,255,0.8), transparent 45%);
-    pointer-events: none;
-  }
-  h1 {
-    margin: 0;
-    font-size: 30px;
-    font-weight: 600;
-    letter-spacing: -0.02em;
-  }
-  .sub {
-    margin: 8px 0 0;
-    font-size: 14px;
-    color: var(--text-2);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-  }
-  .pulse {
-    width: 7px; height: 7px; border-radius: 50%;
-    background: var(--green);
-    box-shadow: 0 0 0 0 rgba(48, 209, 88, 0.4);
-    animation: pulse 2.6s ease-out infinite;
-  }
   @keyframes pulse {
     0%   { box-shadow: 0 0 0 0 rgba(48, 209, 88, 0.4); }
     70%  { box-shadow: 0 0 0 7px rgba(48, 209, 88, 0); }
@@ -168,6 +119,7 @@
     box-shadow: var(--shadow), inset 0 1px 0 rgba(255, 255, 255, 0.9);
     overflow: hidden;
     will-change: transform;
+    transition: box-shadow 0.7s var(--ease-out), border-color 0.7s var(--ease-out);
     animation: rise 0.8s var(--ease-out) backwards;
     animation-delay: calc(var(--i) * 60ms);
   }
@@ -185,12 +137,10 @@
     background: radial-gradient(340px circle at var(--mx) var(--my),
                 rgba(255, 255, 255, 0.55), transparent 48%);
     opacity: 0;
-    transition: opacity 0.35s ease;
+    transition: opacity 0.6s var(--ease-out);
     pointer-events: none;
   }
   .tile:hover::after { opacity: 1; }
-
-  .tile.is-soon { opacity: 0.6; cursor: default; }
 
   .icon {
     width: 56px; height: 56px;
@@ -242,28 +192,6 @@
     animation: pulse 1.2s ease-out infinite;
   }
 
-  .soon-pill {
-    position: absolute;
-    top: 16px; right: 16px;
-    font-size: 10px;
-    font-weight: 600;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    color: var(--text-2);
-    background: rgba(255,255,255,0.6);
-    border: 1px solid var(--stroke);
-    padding: 4px 8px;
-    border-radius: 999px;
-  }
-
-  footer {
-    margin-top: 40px;
-    font-size: 12px;
-    color: var(--text-3);
-    animation: rise 0.8s var(--ease-out) backwards;
-    animation-delay: 0.45s;
-  }
-
   @keyframes rise {
     from { opacity: 0; transform: translateY(14px); }
     to   { opacity: 1; transform: translateY(0); }
@@ -289,15 +217,7 @@
   </div>
 
   <main class="stage">
-    <header>
-      <div class="logo">fx</div>
-      <h1>FX Macro Platform</h1>
-      <p class="sub"><span class="pulse"></span> local control plane</p>
-    </header>
-
     <div class="grid" id="grid"></div>
-
-    <footer>127.0.0.1 · admin plane only — never exposed publicly</footer>
   </main>
 
 <script>
@@ -310,8 +230,8 @@
     { name: "API",        role: "FastAPI · OpenAPI docs",          icon: "terminal", href: "http://127.0.0.1:8000/docs", health: "http://127.0.0.1:8000/health" },
     { name: "Metabase",   role: "Exploratory BI",                  icon: "chart",    href: "http://127.0.0.1:3001",      health: "http://127.0.0.1:3001/api/health" },
     { name: "Elementary", role: "Data-quality report (edr)",       icon: "activity", href: "http://127.0.0.1:8081",      health: "http://127.0.0.1:8081" },
-    { name: "Astro",      role: "Public site",                     icon: "rocket",   href: null,                       health: null, soon: true },
-    { name: "Grafana",    role: "Infra health",                    icon: "gauge",    href: null,                       health: null, soon: true },
+    { name: "dbt docs",   role: "Lineage · dbt DAG",               icon: "graph",    href: "http://127.0.0.1:8083",      health: "http://127.0.0.1:8083" },
+    { name: "Dashboard",  role: "Streamlit · forecast studio",     icon: "forecast", href: "http://127.0.0.1:8501",      health: "http://127.0.0.1:8501/_stcore/health" },
   ];
 
   const ICONS = {
@@ -320,7 +240,9 @@
     terminal: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" x2="20" y1="19" y2="19"/></svg>`,
     activity: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>`,
     rocket:   `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09Z"/><path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2Z"/><path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0"/><path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5"/></svg>`,
-    gauge:    `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="m12 14 4-4"/><path d="M3.34 19a10 10 0 1 1 17.32 0"/></svg>`,
+    package:  `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="M3.3 7 12 12l8.7-5"/><path d="M12 22V12"/></svg>`,
+    graph:    `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="5" r="2.5"/><circle cx="19" cy="5" r="2.5"/><circle cx="12" cy="19" r="2.5"/><path d="M7.5 6.5h9M6.6 7.2 10.9 17M17.4 7.2 13.1 17"/></svg>`,
+    forecast: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M5 15l4-4 3 2 4-5"/><path d="M13 15l2 2 4-6"/><path d="M19 15v-2h2"/></svg>`,
   };
 
   const grid = document.getElementById("grid");
@@ -328,18 +250,12 @@
   const REDUCED = matchMedia("(prefers-reduced-motion: reduce)").matches;
 
   TILES.forEach((t, i) => {
-    const el = document.createElement(t.soon ? "div" : "a");
-    el.className = "tile" + (t.soon ? " is-soon" : "");
+    const el = document.createElement("a");
+    el.className = "tile";
     el.style.setProperty("--i", i);
-    if (!t.soon) {
-      el.href = t.href;
-      el.target = "_blank";
-      el.rel = "noopener";
-    }
-
-    const status = t.soon
-      ? `<div class="soon-pill">Soon</div>`
-      : `<div class="status" data-state="checking"><span class="dot"></span><span class="label">checking</span></div>`;
+    el.href = t.href;
+    el.target = "_blank";
+    el.rel = "noopener";
 
     el.innerHTML = `
       <div class="icon">${ICONS[t.icon]}</div>
@@ -347,70 +263,85 @@
         <div class="name">${t.name}</div>
         <div class="role">${t.role}</div>
       </div>
-      ${status}
+      <div class="status" data-state="checking"><span class="dot"></span><span class="label">checking</span></div>
     `;
 
-    if (!t.soon) {
-      // --- buttery-smooth tilt + specular light, driven by rAF lerp ---
-      const cur = { x: 0, y: 0, lift: 0, mx: 0, my: 0, active: false };
-      const target = { x: 0, y: 0, lift: 0, mx: 0, my: 0, hover: false };
+    // --- buttery-smooth tilt + specular light (time-based, frame-rate independent) ---
+    const cur = { x: 0, y: 0, lift: 0, liftV: 0, mx: 0, my: 0, active: false, last: 0 };
+    const target = { x: 0, y: 0, lift: 0, mx: 0, my: 0, hover: false };
 
-      const K = REDUCED ? 1 : 0.18; // lerp factor → smoothing
+    // Cursor tilt + glow use exponential smoothing (fast, decelerating).
+    const TAU_TILT = 85; // ms
+    const TAU_GLOW = 55; // ms
+    // Vertical lift uses a critically-damped spring for a soft ease-in/ease-out.
+    const STIFFNESS = 170;
+    const DAMPING = 2 * Math.sqrt(STIFFNESS);
 
-      function frame() {
-        cur.x += (target.x - cur.x) * K;
-        cur.y += (target.y - cur.y) * K;
-        cur.lift += (target.lift - cur.lift) * K;
-        cur.mx += (target.mx - cur.mx) * K;
-        cur.my += (target.my - cur.my) * K;
+    function frame(now) {
+      if (!cur.last) cur.last = now;
+      const dt = Math.min(now - cur.last, 64); // clamp tab-switch gaps
+      cur.last = now;
+      const s = dt / 1000;
 
-        el.style.transform =
-          `perspective(900px) translateY(${cur.lift.toFixed(2)}px) rotateX(${(-cur.y * 5).toFixed(3)}deg) rotateY(${(cur.x * 5).toFixed(3)}deg)`;
-        el.style.setProperty("--mx", cur.mx.toFixed(1) + "px");
-        el.style.setProperty("--my", cur.my.toFixed(1) + "px");
+      const kTilt = 1 - Math.exp(-dt / TAU_TILT);
+      const kGlow = 1 - Math.exp(-dt / TAU_GLOW);
 
-        const settled = !target.hover &&
-          Math.abs(cur.x) < 0.001 && Math.abs(cur.y) < 0.001 && Math.abs(cur.lift) < 0.01;
-        if (settled) {
-          cur.active = false;
-          el.style.transform = "";
-        } else {
-          cur.active = true;
-          requestAnimationFrame(frame);
-        }
+      cur.x += (target.x - cur.x) * kTilt;
+      cur.y += (target.y - cur.y) * kTilt;
+      cur.mx += (target.mx - cur.mx) * kGlow;
+      cur.my += (target.my - cur.my) * kGlow;
+
+      // spring: a = -k·(x − target) − c·v
+      cur.liftV += (-STIFFNESS * (cur.lift - target.lift) - DAMPING * cur.liftV) * s;
+      cur.lift += cur.liftV * s;
+
+      el.style.transform =
+        `perspective(900px) translateY(${cur.lift.toFixed(2)}px) rotateX(${(-cur.y * 5).toFixed(3)}deg) rotateY(${(cur.x * 5).toFixed(3)}deg)`;
+      el.style.setProperty("--mx", cur.mx.toFixed(1) + "px");
+      el.style.setProperty("--my", cur.my.toFixed(1) + "px");
+
+      const settled = !target.hover &&
+        Math.abs(cur.x) < 0.001 && Math.abs(cur.y) < 0.001 &&
+        Math.abs(cur.lift) < 0.01 && Math.abs(cur.liftV) < 0.01;
+      if (settled) {
+        cur.active = false;
+        cur.lift = 0;
+        cur.liftV = 0;
+        el.style.transform = "";
+      } else {
+        requestAnimationFrame(frame);
       }
-
-      el.addEventListener("pointerenter", (e) => {
-        target.hover = true;
-        target.lift = -6;
-        const r = el.getBoundingClientRect();
-        target.mx = e.clientX - r.left;
-        target.my = e.clientY - r.top;
-        if (!cur.active && !REDUCED) { cur.active = true; requestAnimationFrame(frame); }
-      });
-
-      el.addEventListener("pointermove", (e) => {
-        const r = el.getBoundingClientRect();
-        const px = e.clientX - r.left;
-        const py = e.clientY - r.top;
-        target.x = px / r.width - 0.5;
-        target.y = py / r.height - 0.5;
-        target.mx = px;
-        target.my = py;
-        if (!cur.active && !REDUCED) { cur.active = true; requestAnimationFrame(frame); }
-      });
-
-      el.addEventListener("pointerleave", () => {
-        target.hover = false;
-        target.lift = 0;
-        target.x = 0;
-        target.y = 0;
-      });
     }
+
+    el.addEventListener("pointerenter", (e) => {
+      target.hover = true;
+      target.lift = -6;
+      const r = el.getBoundingClientRect();
+      target.mx = e.clientX - r.left;
+      target.my = e.clientY - r.top;
+      if (!cur.active && !REDUCED) { cur.active = true; requestAnimationFrame(frame); }
+    });
+
+    el.addEventListener("pointermove", (e) => {
+      const r = el.getBoundingClientRect();
+      const px = e.clientX - r.left;
+      const py = e.clientY - r.top;
+      target.x = px / r.width - 0.5;
+      target.y = py / r.height - 0.5;
+      target.mx = px;
+      target.my = py;
+      if (!cur.active && !REDUCED) { cur.active = true; requestAnimationFrame(frame); }
+    });
+
+    el.addEventListener("pointerleave", () => {
+      target.hover = false;
+      target.lift = 0;
+      target.x = 0;
+      target.y = 0;
+    });
 
     grid.appendChild(el);
 
-    if (t.soon) return;
     const statusEl = el.querySelector(".status");
     if (DEMO || !t.health) {
       if (t.health) setState(statusEl, "online", "live");

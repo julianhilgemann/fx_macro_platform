@@ -1,14 +1,80 @@
 series_id,source,source_key,title,description,unit,frequency,seasonal_adj,country,category,active
 DEXUSEU,fred,DEXUSEU,EUR/USD Spot,Euro to US dollar daily spot exchange rate,USD per EUR,D,false,US,fx,true
 DTWEXBGS,fred,DTWEXBGS,Broad USD Index,Nominal broad trade-weighted US dollar index,index,D,false,US,fx,true
+DTWEXAFEGS,fred,DTWEXAFEGS,USD Advanced FX Index,Nominal advanced foreign economies US dollar index,Index Jan 2006=100,D,false,US,fx,true
+RTWEXBGS,fred,RTWEXBGS,Real Broad USD Index,Real broad trade-weighted US dollar index,Index Jan 2006=100,M,false,US,fx,true
 VIXCLS,fred,VIXCLS,CBOE VIX,CBOE Volatility Index (S&P 500 implied volatility),index,D,false,US,risk,true
 FEDFUNDS,fred,FEDFUNDS,Effective Fed Funds Rate,Effective federal funds rate (monthly),percent,M,false,US,policy_rate,true
 DFEDTARU,fred,DFEDTARU,Fed Funds Target Upper,Federal funds target range upper bound,percent,D,false,US,policy_rate,true
 DFEDTARL,fred,DFEDTARL,Fed Funds Target Lower,Federal funds target range lower bound,percent,D,false,US,policy_rate,true
+DFF,fred,DFF,Effective Fed Funds (daily),Daily effective federal funds rate,percent,D,false,US,policy_rate,true
+SOFR,fred,SOFR,SOFR,Secured Overnight Financing Rate,percent,D,false,US,money,true
 ECBDFR,fred,ECBDFR,ECB Deposit Facility Rate,ECB deposit facility rate (corridor floor),percent,D,false,EA,policy_rate,true
 ECB_MRO,ecb,FM/B.U2.EUR.4F.KR.MRR_FR.LEV,ECB Main Refinancing Rate,ECB main refinancing operations fixed rate (corridor mid),percent,D,false,EA,policy_rate,true
 ECB_MLF,ecb,FM/B.U2.EUR.4F.KR.MLFR.LEV,ECB Marginal Lending Rate,ECB marginal lending facility rate (corridor ceiling),percent,D,false,EA,policy_rate,true
+DGS1MO,fred,DGS1MO,US 1M Treasury Yield,Market yield on US 1-month Treasury constant maturity,percent,D,false,US,yield,true
+DGS1,fred,DGS1,US 1Y Treasury Yield,Market yield on US 1-year Treasury constant maturity,percent,D,false,US,yield,true
 DGS2,fred,DGS2,US 2Y Treasury Yield,Market yield on US 2-year Treasury constant maturity,percent,D,false,US,yield,true
+DGS5,fred,DGS5,US 5Y Treasury Yield,Market yield on US 5-year Treasury constant maturity,percent,D,false,US,yield,true
 DGS10,fred,DGS10,US 10Y Treasury Yield,Market yield on US 10-year Treasury constant maturity,percent,D,false,US,yield,true
+DGS30,fred,DGS30,US 30Y Treasury Yield,Market yield on US 30-year Treasury constant maturity,percent,D,false,US,yield,true
+T10Y2Y,fred,T10Y2Y,US 10Y-2Y Spread,10-year minus 2-year Treasury constant maturity,percent,D,false,US,curve,true
+T10Y3M,fred,T10Y3M,US 10Y-3M Spread,10-year minus 3-month Treasury constant maturity,percent,D,false,US,curve,true
+THREEFYTP10,fred,THREEFYTP10,US 10Y Term Premium (ACM),ACM term premium on a 10-year zero coupon bond,percent,D,false,US,term_premium,true
+THREEFYTP5,fred,THREEFYTP5,US 5Y Term Premium (ACM),ACM term premium on a 5-year zero coupon bond,percent,D,false,US,term_premium,true
+T5YIE,fred,T5YIE,US 5Y Breakeven Inflation,5-year breakeven inflation rate (TIPS),percent,D,false,US,inflation_expectation,true
+T10YIE,fred,T10YIE,US 10Y Breakeven Inflation,10-year breakeven inflation rate (TIPS),percent,D,false,US,inflation_expectation,true
+T5YIFR,fred,T5YIFR,US 5Y5Y Forward Inflation,5-year 5-year forward inflation expectation rate,percent,D,false,US,inflation_expectation,true
+BAA10Y,fred,BAA10Y,Moody's Baa - 10Y Spread,Moody's seasoned Baa corporate yield relative to 10Y Treasury,percent,D,false,US,credit,true
+AAA10Y,fred,AAA10Y,Moody's Aaa - 10Y Spread,Moody's seasoned Aaa corporate yield relative to 10Y Treasury,percent,D,false,US,credit,true
+BAMLH0A0HYM2,fred,BAMLH0A0HYM2,US High Yield OAS,ICE BofA US High Yield Index option-adjusted spread,percent,D,false,US,credit,true
+BAMLC0A0CM,fred,BAMLC0A0CM,US IG Corporate OAS,ICE BofA US Corporate Index option-adjusted spread,percent,D,false,US,credit,true
+STLFSI4,fred,STLFSI4,St. Louis Fed Financial Stress,St. Louis Fed Financial Stress Index,index,W,false,US,risk,true
+KCFSI,fred,KCFSI,Kansas City Financial Stress,Kansas City Financial Stress Index,index,M,false,US,risk,true
+USEPUINDXD,fred,USEPUINDXD,US Economic Policy Uncertainty,Economic Policy Uncertainty Index for United States,index,D,false,US,uncertainty,true
+CPIAUCSL,fred,CPIAUCSL,US CPI,CPI for all urban consumers: all items,Index 1982-1984=100,M,false,US,inflation,true
+CPILFESL,fred,CPILFESL,US Core CPI,CPI for all urban consumers: all items less food and energy,Index 1982-1984=100,M,false,US,inflation,true
+PCEPI,fred,PCEPI,US PCE Price Index,Personal consumption expenditures chain-type price index,Index 2017=100,M,false,US,inflation,true
+PCEPILFE,fred,PCEPILFE,US Core PCE,Personal consumption expenditures excluding food and energy,Index 2017=100,M,false,US,inflation,true
+PCETRIM12M159SFRBDAL,fred,PCETRIM12M159SFRBDAL,US Trimmed Mean PCE YoY,Dallas Fed trimmed mean PCE inflation rate (12-month),percent,M,false,US,inflation,true
+UNRATE,fred,UNRATE,US Unemployment Rate,Unemployment rate,percent,M,false,US,labor,true
+PAYEMS,fred,PAYEMS,US Nonfarm Payrolls,All employees total nonfarm,Thous. of Persons,M,false,US,labor,true
+JTSJOL,fred,JTSJOL,US Job Openings (JOLTS),Job openings total nonfarm,Level in Thous.,M,false,US,labor,true
+CES0500000003,fred,CES0500000003,US Avg Hourly Earnings,Average hourly earnings of all employees total private,$ per Hour,M,false,US,labor,true
+ICSA,fred,ICSA,US Initial Jobless Claims,Initial claims,Number,W,false,US,labor,true
+CCSA,fred,CCSA,US Continued Jobless Claims,Continued claims (insured unemployment),Number,W,false,US,labor,true
+GDPC1,fred,GDPC1,US Real GDP,Real gross domestic product,Bil. of Chn. 2017 $,Q,false,US,growth,true
+INDPRO,fred,INDPRO,US Industrial Production,Industrial production: total index,Index 2017=100,M,false,US,growth,true
+RSXFS,fred,RSXFS,US Retail Sales,Advance retail sales: retail trade,Mil. of $,M,false,US,growth,true
+HOUST,fred,HOUST,US Housing Starts,New privately-owned housing units started: total,Thous. of Units,M,false,US,growth,true
+CSUSHPISA,fred,CSUSHPISA,US Case-Shiller Home Price,S&P Cotality Case-Shiller US national home price index,Index Jan 2000=100,M,false,US,growth,true
+UMCSENT,fred,UMCSENT,US Consumer Sentiment,University of Michigan consumer sentiment,Index 1966:Q1=100,M,false,US,sentiment,true
+M2SL,fred,M2SL,US M2 Money Supply,M2 money stock,Bil. of $,M,false,US,money,true
+WALCL,fred,WALCL,Fed Balance Sheet,Assets: total assets of the Federal Reserve (Wednesday level),Mil. of U.S. $,W,false,US,money,true
+RRPONTSYD,fred,RRPONTSYD,Fed ON RRP,Overnight reverse repurchase agreements: Treasury securities sold,Bil. of US $,D,false,US,money,true
+DCOILWTICO,fred,DCOILWTICO,WTI Crude Spot,Crude oil prices: West Texas Intermediate (WTI) - Cushing,$ per Barrel,D,false,US,commodity,true
+DCOILBRENTEU,fred,DCOILBRENTEU,Brent Crude Spot,Crude oil prices: Brent - Europe,$ per Barrel,D,false,US,commodity,true
+DHHNGSP,fred,DHHNGSP,Henry Hub Natural Gas,Henry Hub natural gas spot price,$ Per Mil. BTU,D,false,US,commodity,true
+PCOPPUSDM,fred,PCOPPUSDM,Global Copper Price,Global price of copper,U.S. $ per Metric Ton,M,false,US,commodity,true
+PALUMUSDM,fred,PALUMUSDM,Global Aluminum Price,Global price of aluminum,U.S. $ per Metric Ton,M,false,US,commodity,true
+PZINCUSDM,fred,PZINCUSDM,Global Zinc Price,Global price of zinc,U.S. $ per Metric Ton,M,false,US,commodity,true
+PCOCOUSDM,fred,PCOCOUSDM,Global Cocoa Price,Global price of cocoa,U.S. $ per Metric Ton,M,false,US,commodity,true
+PWHEAMTUSDM,fred,PWHEAMTUSDM,Global Wheat Price,Global price of wheat,U.S. $ per Metric Ton,M,false,US,commodity,true
+PIORECRUSDM,fred,PIORECRUSDM,Global Iron Ore Price,Global price of iron ore,U.S. $ per Metric Ton,M,false,US,commodity,true
+PNGASEUUSDM,fred,PNGASEUUSDM,EU Natural Gas Price,Global price of natural gas EU,U.S. $ per Mil. Metric British Thermal Unit,M,false,US,commodity,true
+PNGASJPUSDM,fred,PNGASJPUSDM,LNG Asia Price,Global price of LNG Asia,U.S. $ per Mil. Metric British Thermal Unit,M,false,US,commodity,true
+PALLFNFINDEXM,fred,PALLFNFINDEXM,All Commodities Price Index,Global price index of all commodities,Index 2016 = 100,M,false,US,commodity,true
+PNRGINDEXM,fred,PNRGINDEXM,Energy Price Index,Global price of energy index,Index 2016 = 100,M,false,US,commodity,true
+PPIACO,fred,PPIACO,US PPI All Commodities,Producer price index by commodity: all commodities,Index 1982=100,M,false,US,commodity,true
+SP500,fred,SP500,S&P 500,S&P 500 index,index,D,false,US,equity,true
+NASDAQCOM,fred,NASDAQCOM,NASDAQ Composite,NASDAQ Composite index,Index Feb 5 1971=100,D,false,US,equity,true
+NASDAQ100,fred,NASDAQ100,NASDAQ-100,NASDAQ-100 index,index,D,false,US,equity,true
+DJIA,fred,DJIA,Dow Jones Industrial Average,Dow Jones Industrial Average,index,D,false,US,equity,true
+GVZCLS,fred,GVZCLS,CBOE Gold ETF Volatility,CBOE Gold ETF Volatility Index,index,D,false,US,volatility,true
+RVXCLS,fred,RVXCLS,CBOE Russell 2000 Volatility,CBOE Russell 2000 Volatility Index,index,D,false,US,volatility,true
 DE2Y,bundesbank,D.REN.EUR.A610.000000WT0202.A,German 2Y Bund Yield,Daily yield of the current 2-year German federal note,percent,D,false,DE,yield,true
+DE5Y,bundesbank,D.REN.EUR.A620.000000WT0505.A,German 5Y Bund Yield,Daily yield of the current 5-year German federal bond (Bundesobligation),percent,D,false,DE,yield,true
 DE10Y,bundesbank,D.REN.EUR.A630.000000WT1010.A,German 10Y Bund Yield,Daily yield of the current 10-year German federal bond,percent,D,false,DE,yield,true
+ECB_HICP,ecb,ICP/M.U2.N.000000.4.ANR,EA HICP YoY,Euro area HICP overall index annual rate of change,percent,M,false,EA,inflation,true
+ECB_HICP_CORE,ecb,ICP/M.U2.N.XEF000.4.ANR,EA Core HICP YoY,Euro area HICP all-items excluding energy and food annual rate,percent,M,false,EA,inflation,true
+ECB_UNRATE,ecb,LFSI/M.U2.S.UNEHRT.TOTAL0.15_74.T,EA Unemployment Rate,Euro area unemployment rate age 15 to 74 seasonally adjusted,percent,M,false,EA,labor,true
