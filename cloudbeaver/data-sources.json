@@ -1,0 +1,24 @@
+{
+  "folders": {},
+  "connections": {
+    "fx_macro_warehouse": {
+      "provider": "postgresql",
+      "driver": "postgres-jdbc",
+      "name": "fx_macro (warehouse)",
+      "description": "FX macro warehouse — raw, staging, intermediate, marts, meta. Read-only via platform_reader.",
+      "save-password": true,
+      "read-only": false,
+      "configuration": {
+        "host": "postgres",
+        "port": "5432",
+        "database": "warehouse",
+        "configurationType": "MANUAL",
+        "auth-model": "native",
+        "auth-properties": {
+          "userName": "platform_reader",
+          "userPassword": "reader_dev"
+        }
+      }
+    }
+  }
+}

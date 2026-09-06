@@ -94,9 +94,9 @@
   /* ---------- grid ---------- */
   .grid {
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 18px;
-    width: min(860px, 100%);
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 14px;
+    width: min(1120px, 100%);
     perspective: 1200px;
   }
 
@@ -107,9 +107,9 @@
     position: relative;
     display: flex;
     flex-direction: column;
-    gap: 16px;
-    padding: 22px 20px 20px;
-    border-radius: 26px;
+    gap: 10px;
+    padding: 14px 14px 13px;
+    border-radius: 18px;
     text-decoration: none;
     color: inherit;
     background: linear-gradient(145deg, rgba(255,255,255,0.72), rgba(255,255,255,0.4));
@@ -143,16 +143,18 @@
   .tile:hover::after { opacity: 1; }
 
   .icon {
-    width: 56px; height: 56px;
-    border-radius: 16px;
+    width: 40px; height: 40px;
+    border-radius: 11px;
     display: grid; place-items: center;
     color: var(--text);
     background: linear-gradient(145deg, rgba(255,255,255,0.95), rgba(255,255,255,0.6));
     border: 1px solid var(--stroke);
     box-shadow: 0 8px 20px -10px rgba(0,0,0,0.2), inset 0 1px 0 rgba(255,255,255,0.95);
     position: relative;
+    transition: color 0.7s var(--ease-out);
   }
-  .icon svg { width: 25px; height: 25px; position: relative; z-index: 1; }
+  .tile:hover .icon { color: var(--amber); }
+  .icon svg { width: 19px; height: 19px; position: relative; z-index: 1; }
   .icon::after {
     content: "";
     position: absolute;
@@ -162,17 +164,19 @@
     pointer-events: none;
   }
 
-  .meta { display: flex; flex-direction: column; gap: 3px; }
-  .name { font-size: 16.5px; font-weight: 600; letter-spacing: -0.01em; }
-  .role { font-size: 12.5px; color: var(--text-3); }
+  .meta { display: flex; flex-direction: column; gap: 3px; position: relative; z-index: 1; }
+  .name { font-size: 14px; font-weight: 600; letter-spacing: -0.01em; }
+  .role { font-size: 11px; color: var(--text-3); }
 
   .status {
     display: flex;
     align-items: center;
-    gap: 7px;
+    gap: 6px;
     margin-top: auto;
-    font-size: 11.5px;
+    font-size: 10.5px;
     letter-spacing: 0.01em;
+    position: relative;
+    z-index: 1;
   }
   .status .dot {
     width: 7px; height: 7px; border-radius: 50%;
@@ -197,6 +201,9 @@
     to   { opacity: 1; transform: translateY(0); }
   }
 
+  @media (max-width: 1100px) {
+    .grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  }
   @media (max-width: 720px) {
     .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   }
@@ -229,6 +236,7 @@
     { name: "Dagster",    role: "Orchestration · lineage · runs", icon: "layers",   href: "http://127.0.0.1:3000",      health: "http://127.0.0.1:3000" },
     { name: "API",        role: "FastAPI · OpenAPI docs",          icon: "terminal", href: "http://127.0.0.1:8000/docs", health: "http://127.0.0.1:8000/health" },
     { name: "Metabase",   role: "Exploratory BI",                  icon: "chart",    href: "http://127.0.0.1:3001",      health: "http://127.0.0.1:3001/api/health" },
+    { name: "CloudBeaver",role: "SQL workbench · DB browser",      icon: "database", href: "http://127.0.0.1:8978",      health: "http://127.0.0.1:8978" },
     { name: "Elementary", role: "Data-quality report (edr)",       icon: "activity", href: "http://127.0.0.1:8081",      health: "http://127.0.0.1:8081" },
     { name: "dbt docs",   role: "Lineage · dbt DAG",               icon: "graph",    href: "http://127.0.0.1:8083",      health: "http://127.0.0.1:8083" },
     { name: "Dashboard",  role: "Streamlit · forecast studio",     icon: "forecast", href: "http://127.0.0.1:8501",      health: "http://127.0.0.1:8501/_stcore/health" },
@@ -243,6 +251,7 @@
     package:  `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="M3.3 7 12 12l8.7-5"/><path d="M12 22V12"/></svg>`,
     graph:    `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="5" r="2.5"/><circle cx="19" cy="5" r="2.5"/><circle cx="12" cy="19" r="2.5"/><path d="M7.5 6.5h9M6.6 7.2 10.9 17M17.4 7.2 13.1 17"/></svg>`,
     forecast: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M5 15l4-4 3 2 4-5"/><path d="M13 15l2 2 4-6"/><path d="M19 15v-2h2"/></svg>`,
+    database: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14a9 3 0 0 0 18 0V5"/><path d="M3 12a9 3 0 0 0 18 0"/></svg>`,
   };
 
   const grid = document.getElementById("grid");

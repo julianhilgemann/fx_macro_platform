@@ -87,13 +87,36 @@ services:
 
   metabase:
     image: metabase/metabase
+    environment:
+      MB_LOAD_SAMPLE_CONTENT: "false"
     volumes:
-      - metabase_data:/metabase-data
+      - metabase_data:/metabase.db
     ports: ["3001:3000"]
-    # Metabase's own metadata stays on its embedded H2 (in metabase_data).
+    # Metabase's own metadata stays on its embedded H2, persisted in the
+    # metabase_data volume. It's mounted at /metabase.db (Metabase's default
+    # MB_DB_FILE location) so state survives container recreation.
+    # MB_LOAD_SAMPLE_CONTENT=false keeps the bundled Sample Database from being
+    # re-loaded on every startup after it's been removed.
     # Add the warehouse as a data source in the UI:
     #   PostgreSQL  host=postgres port=5432  db=warehouse
     #   user=platform_reader  password=reader_dev
+
+  cloudbeaver:
+    image: dbeaver/cloudbeaver:latest
+    environment:
+      CB_SERVER_NAME: "FX Macro Warehouse"
+      CB_ADMIN_NAME: ${CLOUDBEAVER_ADMIN_NAME:-cbadmin}
+      CB_ADMIN_PASSWORD: ${CLOUDBEAVER_ADMIN_PASSWORD:-Cloudbeaver123}
+    volumes:
+      - cloudbeaver_data:/opt/cloudbeaver/workspace
+      # Pre-seed the warehouse connection (host=postgres, db=warehouse,
+      # user=platform_reader). Mounted read-write: CloudBeaver owns this file and
+      # persists/encrypts credentials here on first connect.
+      - ./cloudbeaver/data-sources.json:/opt/cloudbeaver/workspace/GlobalConfiguration/.dbeaver/data-sources.json
+    ports: ["8978:8978"]   # DBeaver's web UI (SQL workbench / DB browser)
+    depends_on:
+      postgres: { condition: service_healthy }
+    restart: unless-stopped
 
   launchpad:
     image: nginx:alpine
@@ -138,4 +161,5 @@ volumes:
   pgdata:
   dagster_home:
   metabase_data:
+  cloudbeaver_data:
   dbt_target:
