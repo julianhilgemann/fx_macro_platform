@@ -63,3 +63,70 @@ def load_observations(series_id: str) -> pd.DataFrame:
     df["obs_date"] = pd.to_datetime(df["obs_date"])
     df["value"] = pd.to_numeric(df["value"], errors="coerce")
     return df.dropna(subset=["value"])
+
+
+def load_series_grains(series_id: str) -> pd.DataFrame:
+    """Precomputed resampled grains (dbt marts.fct_macro_series_grains).
+
+    Returns (grain, period_date, value) for every applicable grain; empty if
+    the mart has not been built yet.
+    """
+    df = _query_df(
+        """
+        SELECT grain, period_date, value
+        FROM marts.fct_macro_series_grains
+        WHERE series_id = %s
+        ORDER BY grain, period_date
+        """,
+        [series_id],
+    )
+    if df.empty:
+        return df
+    df["period_date"] = pd.to_datetime(df["period_date"])
+    df["value"] = pd.to_numeric(df["value"], errors="coerce")
+    return df.dropna(subset=["value"])
+
+
+def load_series_transforms(series_id: str, grain: str, transform: str) -> pd.DataFrame:
+    """Precomputed transform series (dbt marts.fct_macro_series_transforms).
+
+    Returns (period_date, value) for one (series, grain, transform); empty if
+    the mart has not been built or the transform is undefined for the series.
+    """
+    df = _query_df(
+        """
+        SELECT period_date, value
+        FROM marts.fct_macro_series_transforms
+        WHERE series_id = %s AND grain = %s AND transform = %s
+        ORDER BY period_date
+        """,
+        [series_id, grain, transform],
+    )
+    if df.empty:
+        return df
+    df["period_date"] = pd.to_datetime(df["period_date"])
+    df["value"] = pd.to_numeric(df["value"], errors="coerce")
+    return df.dropna(subset=["value"])
+
+
+def load_series_period_metrics(series_id: str, grain: str) -> pd.DataFrame:
+    """Precomputed period metrics (dbt marts.fct_macro_series_period_metrics).
+
+    Returns (period_date, value, mom_pct, qoq_pct, yoy_pct, mtd_pct, ytd_pct);
+    empty if the mart has not been built yet.
+    """
+    df = _query_df(
+        """
+        SELECT period_date, value, mom_pct, qoq_pct, yoy_pct, mtd_pct, ytd_pct
+        FROM marts.fct_macro_series_period_metrics
+        WHERE series_id = %s AND grain = %s
+        ORDER BY period_date
+        """,
+        [series_id, grain],
+    )
+    if df.empty:
+        return df
+    df["period_date"] = pd.to_datetime(df["period_date"])
+    for col in ("value", "mom_pct", "qoq_pct", "yoy_pct", "mtd_pct", "ytd_pct"):
+        df[col] = pd.to_numeric(df[col], errors="coerce")
+    return df

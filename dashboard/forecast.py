@@ -47,6 +47,12 @@ def detect_frequency(index: pd.DatetimeIndex, freq_label: str | None) -> tuple[s
     if label.startswith("Q"):
         return "QS", 4
     if label.startswith("W"):
+        # FRED weekly series are dated on a fixed weekday (usually Saturday);
+        # anchor the weekly grid on the most common observed weekday.
+        if len(index):
+            day = int(pd.Series(index.dayofweek).mode().iloc[0])
+            weekday = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"][day]
+            return f"W-{weekday}", 52
         return "W", 52
 
     gaps = np.diff(index.asi8) / (1e9 * 86400.0)  # median spacing in days

@@ -100,9 +100,9 @@ def forecast_figure(result, meta) -> go.Figure:
         yaxis_title=meta.unit or "value",
         template="plotly_white",
         height=460,
-        margin=dict(l=10, r=10, t=50, b=10),
+        margin=dict(l=10, r=10, t=92, b=10),
         hovermode="x unified",
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, x=0),
+        legend=dict(orientation="h", yanchor="bottom", y=1.04, x=0),
     )
     return fig
 
