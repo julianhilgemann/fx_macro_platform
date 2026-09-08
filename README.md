@@ -94,11 +94,33 @@ Upstream endpoints and response shapes are documented in
 ingest/     fetch clients -> Postgres raw.source_fetch (spec §5)
 dbt/        staging -> intermediate -> marts (Postgres), series_catalog seed
 api/        FastAPI read layer over marts (platform_reader)
-dashboard/  Streamlit forecasting studio (separate image, reads marts as platform_reader)
+dashboard/  Streamlit forecasting studio + Signal Lab (separate image, reads marts as platform_reader)
 sql/        001_init.sh — roles, databases, schemas, raw landing table
 agents/     environment facts + gotchas for agentic builds
 docs/       api-calls.md · migration-plan.md
 ```
+
+### dbt marts for grains & transforms
+
+Beyond the observation facts, dbt precomputes the Signal Lab analytics in the
+warehouse (tables, rebuilt by the daily schedule):
+
+- `marts.fct_macro_series_grains` — every series resampled to each applicable
+  calendar grain (`day` calendar-filled for daily series, `week` ISO-Monday
+  buckets, `month`, `quarter`, `year`), never finer than the native frequency
+  (singular test asserts this). Unique index + ANALYZE via post-hooks.
+- `marts.fct_macro_series_transforms` — long format
+  (series, grain, period_date, transform): `level`, `diff`, `pct_change`,
+  `log_level` (positives only), `log_return` (positives only), `index_100`
+  (base = series inception), `zscore`. STL components stay runtime (Loess has
+  no SQL equivalent).
+- `marts.fct_macro_series_period_metrics` — per (series, grain, period_date):
+  `mom_pct`, `qoq_pct`, `yoy_pct` (calendar-date joins — robust to gaps in the
+  native data, unlike lag-k), `mtd_pct`, `ytd_pct`.
+
+Signal Lab's sidebar **Data grain** selector reads these marts (platform_reader
+has SELECT via default privileges); STL transforms and the `native` grain fall
+back to runtime computation.
 
 ## Dashboard (Streamlit)
 
@@ -116,3 +138,27 @@ Metabase. Pick a series, hit **Run model**, and it will:
   diagnostic battery (ADF/KPSS, Ljung-Box, Jarque-Bera, Engle ARCH,
   Durbin-Watson, residual ACF/PACF);
 - plot the multi-period forecast with prediction intervals over the history.
+
+### Signal Lab (multipage)
+
+A second page (`pages/1_📊_Signal_Lab.py`, analytics in `lab.py`) dissects any
+series in the time *and* frequency domains:
+
+- transforms — level, first difference, % change, log-return, index (base
+  date), z-score, STL components and seasonally-adjusted series;
+- calendar metrics — MoM/QoQ/YoY/MTD/YTD, annual performance, recent-history
+  tables with YoY columns;
+- decomposition — STL / classical additive / multiplicative with Hyndman
+  strength-of-trend & seasonality, component volatility, single-cycle zoom;
+- cyclicality — ACF/PACF, Ljung-Box p-values per lag, lag-scatter plots,
+  seasonal subseries overlays, cycle profiles, year × position heatmaps
+  (levels and YoY);
+- frequency domain — periodogram + Welch PSD (log-log) with dominant-period
+  peaks and spectral band shares, and a Morlet wavelet scalogram;
+- time filtering — HP, Baxter-King, Christiano-Fitzgerald, Butterworth
+  low/high/band-pass, centred MA and EMA, each with frequency response and a
+  variance split; the filtered slice can feed every other tab;
+- distribution & risk — KDE vs normal fit, Q-Q plots, rolling moments,
+  drawdown, per-year ridge plots and by-cycle violins;
+- multi-series correlation maps — level & %-change matrices, rolling
+  correlations and lead-lag cross-correlograms against up to 6 companions.

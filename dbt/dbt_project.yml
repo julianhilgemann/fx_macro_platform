@@ -32,7 +32,17 @@ seeds:
 
 # Elementary (spec §9): persist dbt artifacts/test results on every build, and
 # let Elementary's overridden dbt macros (e.g. test materialization) take effect.
+#
+# The grain-mart indexes are (re)created here, after ALL table swaps, because
+# model-level post-hooks interact unreliably with the elementary dispatch
+# override in this stack (they sometimes run against the pre-swap table).
 on-run-end:
+  - "create unique index if not exists ux_macro_series_grains on marts.fct_macro_series_grains (series_id, grain, period_date)"
+  - "create unique index if not exists ux_macro_series_period_metrics on marts.fct_macro_series_period_metrics (series_id, grain, period_date)"
+  - "create index if not exists ix_macro_series_transforms_lookup on marts.fct_macro_series_transforms (series_id, grain, transform, period_date)"
+  - "analyze marts.fct_macro_series_grains"
+  - "analyze marts.fct_macro_series_transforms"
+  - "analyze marts.fct_macro_series_period_metrics"
   - "{{ elementary.upload_dbt_artifacts() }}"
 
 dispatch:

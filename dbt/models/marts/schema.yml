@@ -34,3 +34,101 @@ models:
     columns:
       - name: series_id
         tests: [unique, not_null]
+
+  - name: fct_macro_series_grains
+    description: >
+      Resampled series mart: one row per (series_id, grain, period_date) with
+      last-observation-in-period (asof) values. Grains: day (calendar-filled,
+      daily series only), week (ISO Monday buckets), month, quarter, year —
+      never finer than the series' native frequency.
+    config:
+      post-hook:
+        - "create unique index if not exists ux_macro_series_grains on marts.fct_macro_series_grains (series_id, grain, period_date)"
+        - "analyze marts.fct_macro_series_grains"
+    columns:
+      - name: series_id
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_series')
+              field: series_id
+      - name: grain
+        tests:
+          - not_null
+          - accepted_values:
+              values: [day, week, month, quarter, year]
+      - name: period_date
+        tests: [not_null]
+      - name: value
+        tests: [not_null]
+
+  - name: fct_macro_series_transforms
+    description: >
+      Long-format transforms mart: one row per (series_id, grain, period_date,
+      transform) with the precomputed level, diff, pct_change, log_level,
+      log_return, index_100 (base = series inception) and zscore (full-history
+      mean/stddev). STL components are excluded — Loess has no SQL equivalent —
+      and remain runtime-computed by the dashboard.
+    config:
+      post-hook:
+        - "create index if not exists ix_macro_series_transforms_lookup on marts.fct_macro_series_transforms (series_id, grain, transform, period_date)"
+        - "analyze marts.fct_macro_series_transforms"
+    columns:
+      - name: series_id
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_series')
+              field: series_id
+      - name: grain
+        tests:
+          - not_null
+          - accepted_values:
+              values: [day, week, month, quarter, year]
+      - name: period_date
+        tests: [not_null]
+      - name: transform
+        tests:
+          - not_null
+          - accepted_values:
+              values: [level, diff, pct_change, log_level, log_return, index_100, zscore]
+      - name: value
+        tests: [not_null]
+
+  - name: fct_macro_series_period_metrics
+    description: >
+      Period-metrics mart: one row per (series_id, grain, period_date) with the
+      level plus MoM (period-over-period), QoQ, YoY, MTD and YTD % changes using
+      grain-aware offsets (week: 52-week YoY / 13-week QoQ; day joins clamped
+      calendar dates; MTD/YTD anchor on the last period before the current
+      month/year).
+    config:
+      post-hook:
+        - "create unique index if not exists ux_macro_series_period_metrics on marts.fct_macro_series_period_metrics (series_id, grain, period_date)"
+        - "analyze marts.fct_macro_series_period_metrics"
+    columns:
+      - name: series_id
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_series')
+              field: series_id
+      - name: grain
+        tests:
+          - not_null
+          - accepted_values:
+              values: [day, week, month, quarter, year]
+      - name: period_date
+        tests: [not_null]
+      - name: value
+        tests: [not_null]
+      - name: mom_pct
+        description: "% change vs the previous period."
+      - name: qoq_pct
+        description: "% change vs three months / thirteen weeks earlier."
+      - name: yoy_pct
+        description: "% change vs one year / 52 weeks earlier."
+      - name: mtd_pct
+        description: "% change vs the last period before the current month."
+      - name: ytd_pct
+        description: "% change vs the last period before the current year."

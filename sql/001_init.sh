@@ -14,6 +14,10 @@ psql -v ON_ERROR_STOP=1 \
     CREATE ROLE platform_writer LOGIN PASSWORD '${PLATFORM_WRITER_PASSWORD:-writer_dev}';
     CREATE ROLE platform_reader LOGIN PASSWORD '${PLATFORM_READER_PASSWORD:-reader_dev}';
 
+    -- The dbt grain/transform marts sort ~430k-row inputs; default work_mem
+    -- (4MB) spills those sorts to disk and turns a ~45s model into minutes.
+    ALTER ROLE platform_writer SET work_mem = '256MB';
+
     -- Three databases on one instance (spec §4). warehouse = POSTGRES_DB.
     CREATE DATABASE dagster;
     CREATE DATABASE cms;
