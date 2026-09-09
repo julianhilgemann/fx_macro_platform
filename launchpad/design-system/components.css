@@ -21,17 +21,17 @@
 }
 .ambient .b1 {
   width: 640px; height: 640px; left: -160px; top: -200px;
-  background: radial-gradient(circle, var(--glass-90), transparent 70%);
+  background: radial-gradient(circle, var(--glow-blue), transparent 70%);
   animation: drift1 var(--dur-drift-a) var(--ease-out) infinite alternate;
 }
 .ambient .b2 {
   width: 560px; height: 560px; right: -140px; top: 10%;
-  background: radial-gradient(circle, var(--glass-75), transparent 70%);
+  background: radial-gradient(circle, var(--glow-gold), transparent 70%);
   animation: drift2 var(--dur-drift-b) var(--ease-out) infinite alternate;
 }
 .ambient .b3 {
   width: 520px; height: 520px; left: 30%; bottom: -260px;
-  background: radial-gradient(circle, var(--shade-45), transparent 70%);
+  background: radial-gradient(circle, var(--glow-violet), transparent 70%);
   animation: drift1 var(--dur-drift-c) var(--ease-out) infinite alternate-reverse;
 }
 
@@ -52,15 +52,17 @@
 
 /* ---------- grid ---------- */
 .grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(var(--tile-min), 1fr));
+  display: flex;
+  flex-wrap: nowrap;
+  justify-content: center;
+  align-items: stretch;
   gap: var(--space-5);
   width: min(var(--grid-max), 100%);
   perspective: var(--perspective-stage);
 }
-@media (max-width: 1100px) { .grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
-@media (max-width: 720px)  { .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-@media (max-width: 460px)  { .grid { grid-template-columns: 1fr; } }
+@media (max-width: 1100px) { .grid { flex-wrap: wrap; } .grid .tile { flex: 1 1 calc(25% - var(--space-5)); } }
+@media (max-width: 720px)  { .grid .tile { flex: 1 1 calc(50% - var(--space-5)); } }
+@media (max-width: 460px)  { .grid .tile { flex: 1 1 100%; } }
 
 /* ---------- tile (glass card) ---------- */
 .tile {
@@ -69,8 +71,10 @@
   position: relative;
   display: flex;
   flex-direction: column;
-  gap: var(--space-3);
-  padding: var(--space-5) var(--space-5) var(--space-4);
+  flex: 1 1 var(--tile-min);
+  min-width: 0;
+  gap: var(--space-2);
+  padding: var(--space-4);
   border-radius: var(--radius-lg);
   text-decoration: none;
   color: inherit;
@@ -128,8 +132,8 @@
 }
 
 /* ---------- meta (text block) ---------- */
-.meta { display: flex; flex-direction: column; gap: var(--space-1); position: relative; z-index: var(--z-overlay); }
-.name { font-size: var(--text-md); font-weight: 600; letter-spacing: -0.01em; }
+.meta { display: flex; flex-direction: column; gap: var(--space-1); position: relative; z-index: var(--z-overlay); min-width: 0; }
+.name { font-size: var(--text-md); font-weight: 600; letter-spacing: -0.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .role { font-size: var(--text-sm); color: var(--text-muted); }
 
 /* ---------- status (health pill) ---------- */

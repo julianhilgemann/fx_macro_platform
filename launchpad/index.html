@@ -7,6 +7,7 @@
 <link rel="stylesheet" href="design-system/design-system.css" />
 </head>
 <body>
+  <canvas id="bg" aria-hidden="true"></canvas>
   <div class="ambient" aria-hidden="true">
     <div class="blob b1"></div>
     <div class="blob b2"></div>
@@ -17,6 +18,7 @@
     <div class="grid" id="grid"></div>
   </main>
 
+  <script src="design-system/bg-gradient.js"></script>
   <script src="design-system/design-system.js"></script>
   <script>
   // ---------------------------------------------------------------
@@ -57,12 +59,12 @@
     el.href = t.href;
     el.target = "_blank";
     el.rel = "noopener";
+    el.title = t.role;
 
     el.innerHTML = `
       <div class="icon">${ICONS[t.icon]}</div>
       <div class="meta">
         <div class="name">${t.name}</div>
-        <div class="role">${t.role}</div>
       </div>
       <div class="status" data-state="checking"><span class="dot"></span><span class="label">checking</span></div>
     `;

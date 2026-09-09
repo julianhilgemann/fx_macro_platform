@@ -57,13 +57,14 @@ script (as `index.html` does).
 
 ## Tokens (atoms)
 
-Tint tokens use an opacity-percentage suffix: `--glass-72` = white @ 72%,
-`--shade-45` = black @ 4.5%.
+Tint tokens use an opacity-percentage suffix: `--glass-72` = white @ 7.2%
+(dark glass over the ink background), `--shade-45` = black @ 4.5%.
 
 - **Palette** — `--gray-50…900`, `--green-500/700`, `--amber-500`.
-- **Semantic color** — `--bg-top/mid/bot`, `--text`, `--text-muted`,
-  `--accent`, `--success`, `--success-fg`, `--warning`.
-- **Glass (white tints)** — `--glass-40…100`.
+- **Semantic color** — `--bg-top/mid/bot` (dark ink gradient), `--text`,
+  `--text-muted`, `--accent`, `--success`, `--success-fg`, `--warning`.
+- **Glass (white tints · dark glass)** — `--glass-40…100` (low opacity).
+- **Ambient glow** — `--glow-blue`, `--glow-gold`, `--glow-violet`.
 - **Shade (black tints)** — `--shade-4…24`, `--shade-45`.
 - **Status glow** — `--success-18`, `--success-40`.
 - **Elevation** — `--shadow-rest/hover/icon`, `--inset-rest/icon/hover`.
@@ -85,8 +86,8 @@ Tint tokens use an opacity-percentage suffix: `--glass-72` = white @ 72%,
   (`.b1/.b2/.b3`). Decorative; add once per page.
 - **`.stage`** — centered, full-height page layout (`position: relative`,
   `min-height: 100vh`, flex centering).
-- **`.grid`** — auto-fitting tile grid: every tile lands in a single row at
-  full width (7 across), stepping to 3 → 2 → 1 columns on smaller screens.
+- **`.grid`** — a single centered row of equal-width tiles on desktop (cards
+  shrink to fit the row), wrapping to 4 → 2 → 1 columns on smaller screens.
 - **`.tile`** — the glass card. Styled for `display: flex; flex-direction:
   column` with a bottom-aligned `.status`. Add `data-tilt` for the hover
   tilt/glow. Set `--i` for staggered entrance.

@@ -23,6 +23,24 @@ body {
   background-attachment: fixed;
 }
 
+/* animated gradient background canvas. The element is pinned to the viewport
+   and overscanned on every side by --bg-overscan so the 56px blur has bleed
+   room and never shows a faded edge. Width/height are set explicitly — a
+   canvas is a replaced element, so it would otherwise keep its 300×150
+   intrinsic size (and leak into the page flow, pushing the tiles down). */
+#bg {
+  position: fixed;
+  top: calc(0px - var(--bg-overscan));
+  left: calc(0px - var(--bg-overscan));
+  width: calc(100vw + var(--bg-overscan) + var(--bg-overscan));
+  height: calc(100vh + var(--bg-overscan) + var(--bg-overscan));
+  height: calc(100dvh + var(--bg-overscan) + var(--bg-overscan));
+  z-index: var(--z-bg);
+  pointer-events: none;
+  display: block;
+  filter: blur(var(--blur-bg));
+}
+
 @media (prefers-reduced-motion: reduce) {
   * { animation: none !important; transition: none !important; }
 }
