@@ -85,6 +85,20 @@ services:
     ports: ["8501:8501"]   # Streamlit forecasting studio
     restart: unless-stopped
 
+  germany-dashboard:
+    build: { context: ./germany, dockerfile: Dockerfile }
+    image: fx-macro-germany:latest
+    depends_on:
+      postgres: { condition: service_healthy }
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_DB: warehouse
+      PLATFORM_READER_USER: platform_reader
+      PLATFORM_READER_PASSWORD: ${PLATFORM_READER_PASSWORD:-reader_dev}
+    ports: ["8084:8084"]   # German economy D3 dashboard (FastAPI + static frontend)
+    restart: unless-stopped
+
   metabase:
     image: metabase/metabase
     environment:

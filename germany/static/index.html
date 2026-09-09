@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="color-scheme" content="dark" />
+<title>Deutschland · Macro Pulse</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23f6b94b'/%3E%3Ctext x='16' y='21.5' font-family='-apple-system,system-ui' font-size='14' font-weight='700' text-anchor='middle' fill='%231a1408'%3EDE%3C/text%3E%3C/svg%3E" />
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <canvas id="bg" aria-hidden="true"></canvas>
+  <div class="ambient" aria-hidden="true">
+    <div class="blob b1"></div>
+    <div class="blob b2"></div>
+    <div class="blob b3"></div>
+  </div>
+
+  <div class="shell">
+    <div class="primary">
+      <section class="kpi-grid" id="kpiGrid" aria-label="Key indicators"></section>
+
+      <section class="card hero-card">
+        <div class="card-head">
+          <div>
+            <h2 id="heroTitle">10Y Bund Yield</h2>
+            <p class="card-sub" id="heroSubtitle">Select a tile above to explore an indicator.</p>
+          </div>
+          <div class="hero-meta" id="heroMeta"></div>
+        </div>
+        <div class="chart chart-hero" id="heroChart"></div>
+        <div class="surface-hint" id="heroHint">Click any tile above to switch the chart.</div>
+      </section>
+    </div>
+
+    <section class="grid-2">
+      <div class="card">
+        <div class="card-head">
+          <div>
+            <h2>Yield Curve — Snapshot</h2>
+            <p class="card-sub">Today's curve vs one year ago · dots are real anchor rates</p>
+          </div>
+        </div>
+        <div class="chart chart-tall" id="curveSnapshot"></div>
+      </div>
+      <div class="card">
+        <div class="card-head">
+          <div>
+            <h2>Inflation — Headline vs Core</h2>
+            <p class="card-sub">Euro-area HICP, year-over-year · dashed line is the 2% target</p>
+          </div>
+        </div>
+        <div class="chart chart-tall" id="inflation"></div>
+      </div>
+    </section>
+
+    <section class="grid-2">
+      <div class="card">
+        <div class="card-head">
+          <div>
+            <h2>ECB Policy Corridor</h2>
+            <p class="card-sub">Deposit (floor) · MRO (mid) · marginal lending (ceiling)</p>
+          </div>
+        </div>
+        <div class="chart chart-tall" id="corridor"></div>
+      </div>
+      <div class="card">
+        <div class="card-head">
+          <div>
+            <h2>Bund Yields — 2Y / 5Y / 10Y</h2>
+            <p class="card-sub">The German sovereign curve through the rate cycle</p>
+          </div>
+        </div>
+        <div class="chart chart-tall" id="bundYields"></div>
+      </div>
+    </section>
+
+    <section class="grid-2">
+      <div class="card">
+        <div class="card-head">
+          <div>
+            <h2>EA Unemployment Rate</h2>
+            <p class="card-sub">Seasonally adjusted, 15–74</p>
+          </div>
+        </div>
+        <div class="chart chart-tall" id="unemployment"></div>
+      </div>
+      <div class="card">
+        <div class="card-head">
+          <div>
+            <h2>EUR / USD</h2>
+            <p class="card-sub">Spot exchange rate · euro strength vs the dollar</p>
+          </div>
+        </div>
+        <div class="chart chart-tall" id="fx"></div>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card-head">
+        <div>
+          <h2>Energy — EU Natural Gas (TTF proxy)</h2>
+          <p class="card-sub">A key input to German industry · the 2022 energy shock in context</p>
+        </div>
+      </div>
+      <div class="chart chart-tall" id="energy"></div>
+    </section>
+
+    <footer>
+      <div>
+        Data from Bundesbank (BBSSY) &amp; ECB Data Portal (SDW), warehoused point-in-time and served by FastAPI.
+        Intermediate yield-curve tenors are interpolated from real anchors. Indicative only — not investment advice.
+      </div>
+      <div>FX Macro Platform · <span id="footBuild">—</span></div>
+    </footer>
+  </div>
+
+  <div class="tooltip" id="tooltip" role="tooltip"></div>
+
+  <script src="vendor/d3.v7.min.js"></script>
+  <script src="bg-gradient.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
