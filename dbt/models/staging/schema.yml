@@ -26,7 +26,7 @@ models:
         tests: [not_null]
 
   - name: stg_bundesbank__observations
-    description: "Typed observations parsed from Bundesbank BBSSY fetch payloads."
+    description: "Typed observations parsed from Bundesbank CSV payloads (BBSSY bond quotes and the BBSIS term structure)."
     columns:
       - name: series_id
         tests: [not_null]

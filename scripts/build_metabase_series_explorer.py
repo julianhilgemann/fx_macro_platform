@@ -7,7 +7,7 @@ time-series line chart per active series in the warehouse:
     marts.dim_series            -> series catalog (id, title, unit, category, ...)
     marts.fct_macro_observation -> observations (obs_date, value, is_latest)
 
-Cards are grouped into a sub-collection per `category` so the 79 series stay
+Cards are grouped into a sub-collection per `category` so the series stay
 browsable. Re-running archives the previous "FX Macro — Series Explorer"
 collection first, so it is safe to run repeatedly.
 

@@ -46,21 +46,35 @@ Parser: `parse_response` in [`ingest/parse.py`](../ingest/parse.py).
 
 ---
 
-## 2. Bundesbank (daily German Bund yields)
+## 2. Bundesbank (daily German Bund yields + the term structure)
 
 Source #2 — FRED has no clean daily German 2Y, so the Bund legs come from the
-Bundesbank statistics API (BBSSY flow = *daily yields of the most recently issued
-federal securities*).
+Bundesbank statistics API. Two flows are used, and the flow is part of each
+series key (`ingest.config.Series.provider_key`), the same way ECB keys carry
+their dataflow:
 
-- **Endpoint:** `https://api.statistiken.bundesbank.de/rest/data/BBSSY/{key}`
+| flow | what it is | series |
+|---|---|---|
+| `BBSSY` | *daily yields of the most recently issued federal securities* — observed quotes of the actual on-the-run bonds | `DE2Y`, `DE5Y`, `DE10Y` |
+| `BBSIS` | *term structure of interest rates on listed federal securities (method by Svensson)* — the fitted curve, one series per residual maturity | `DE_TS_6M`, `DE_TS_1Y` … `DE_TS_30Y` |
+
+- **Endpoint:** `https://api.statistiken.bundesbank.de/rest/data/{flow}/{key}`
 - **Key:** none. **Format:** CSV (`format=csv&lang=en`). Missing values are `"."`.
 
 ```
 https://api.statistiken.bundesbank.de/rest/data/BBSSY/D.REN.EUR.A610.000000WT0202.A?format=csv&lang=en
+https://api.statistiken.bundesbank.de/rest/data/BBSIS/D.I.ZST.ZI.EUR.S1311.B.A604.R10XX.R.A.A._Z._Z.A?format=csv&lang=en
 ```
 
 Key structure `D.REN.EUR.A6x0.000000WTmmss.A`: `A610`+`WT0202` = 2-year Schatz,
 `A630`+`WT1010` = 10-year Anleihe.
+
+Key structure `D.I.ZST.ZI.EUR.S1311.B.A604.R{mm}XX.R.A.A._Z._Z.A`: `ZST` =
+Zinsstruktur (term structure), `A604` = Svensson method, and the maturity
+dimension runs `R005X` (0.5y) then `R01XX` … `R30XX` (1..30y). An empty maturity
+dimension returns all 31 in one wide file. Daily history starts 2000-08 (1997 for
+maturities up to 20y); a monthly variant (`M.I.ZST.…`) reaches back to 1972-09 —
+we ingest the daily one and let the dbt resampled grains derive the coarser views.
 
 Response: metadata header rows (`Comment`, `Decimals`, …) followed by data rows:
 
@@ -70,7 +84,12 @@ Response: metadata header rows (`Comment`, `Decimals`, …) followed by data row
 2026-07-22,2.81,
 ```
 
-Parser: `parse_bundesbank_csv` (keeps rows whose first column is an ISO date).
+BBSIS can also ship monthly periods (`2026-08,2.76,`), so the parser accepts
+SDMX-style periods as well as ISO dates and normalises both to first-of-period.
+
+Parser: `parse_bundesbank_csv` (keeps rows whose first column parses as a period;
+`ingest/load.py` warns loudly if a CSV yields zero observations, because a period
+format we fail to recognise would otherwise ingest nothing and merely look stale).
 
 ---
 

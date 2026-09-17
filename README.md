@@ -91,7 +91,9 @@ The API connects as `platform_reader` and reads `marts`/`meta` only.
 
 - **FRED** (spot, US rates/yields, ECB deposit rate) — free key required; vintage
   (`known_at`) taken from each observation's `realtime_start`.
-- **Bundesbank** (daily German 2Y/10Y Bund yields) — no key.
+- **Bundesbank** (daily German Bund yields and the full 0.5–30Y Svensson term
+  structure) — no key. Two flows: `BBSSY` observed 2Y/5Y/10Y bond quotes, and
+  `BBSIS` the fitted curve at every tenor.
 - **ECB SDW / Data Portal** (ECB policy corridor) — no key.
 
 Upstream endpoints and response shapes are documented in
@@ -210,7 +212,7 @@ copied): `volatility-report.html`.
 A fourth page (`pages/3_🔄_Data_Ops.py`) pulls the **newest version of a chosen
 series** on demand and rebuilds its transform, or triggers the whole pipeline:
 
-- freshness table across all 79 configured series (last observation, age, count),
+- freshness table across every configured series (last observation, age, count),
   filterable by source/frequency and flagging anything older than 7 days;
 - **Refresh this series** → `POST /ops/refresh/{series_id}`, which queues a
   Dagster run of `refresh_series_job`: fetch that one series into

@@ -66,6 +66,12 @@ def _normalize_payload(res: FetchResult) -> dict | None:
         records = parse_ecb_sdmx_csv(text, source=res.source, series_id=res.resource, fetch_timestamp=ts, raw_file="")
     else:
         records = []
+    if not records:
+        # An empty body and a period format we failed to recognise both land
+        # here. Say so: the alternative is a series that ingests nothing and
+        # merely looks stale downstream.
+        print(f"  WARN {res.resource} [{res.source}]: 0 observations parsed from "
+              f"{len(text)} bytes — unrecognised period format?")
     return {
         "observations": [
             {"date": r.reference_period.isoformat(),

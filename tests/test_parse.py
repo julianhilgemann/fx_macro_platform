@@ -89,6 +89,37 @@ def test_parse_bundesbank_csv_skips_headers_and_missing():
     assert records[2].value == 2.81
 
 
+# A trimmed BBSIS (Svensson term structure) body: monthly periods, not ISO dates.
+_BBSIS_CSV = (
+    '"",BBSIS.M.I.ZST.ZI.EUR.S1311.B.A604.R01XX.R.A.A._Z._Z.A,'
+    'BBSIS.M.I.ZST.ZI.EUR.S1311.B.A604.R01XX.R.A.A._Z._Z.A_FLAGS\n'
+    '"",Term structure of interest rates on listed Federal securities '
+    '(method by Svensson) / residual maturity of 1.0 year / monthly data,\n'
+    "Time format code,P1M,\n"
+    "1972-09,8.08,\n"
+    "2026-08,2.76,\n"
+)
+
+
+def test_parse_bundesbank_csv_accepts_monthly_periods():
+    """BBSIS can ship `YYYY-MM`; an ISO-only parser would silently yield nothing."""
+    ts = datetime(2026, 9, 17, 6, 0, 0, tzinfo=timezone.utc)
+    records = parse_bundesbank_csv(
+        _BBSIS_CSV,
+        source="bundesbank",
+        series_id="DE_TS_1Y",
+        fetch_timestamp=ts,
+        raw_file="raw/bundesbank/DE_TS_1Y/2026-09-17T06:00:00.000000Z.csv",
+    )
+
+    assert len(records) == 2
+    # monthly periods resolve to first-of-period, as the ECB parser does
+    assert records[0].reference_period == date(1972, 9, 1)
+    assert records[0].value == 8.08
+    assert records[1].reference_period == date(2026, 8, 1)
+    assert records[1].value == 2.76
+
+
 # A trimmed ECB Data Portal (SDW) csvdata body: header row, then change-point rows.
 _ECB_CSV = (
     "KEY,FREQ,REF_AREA,CURRENCY,TIME_PERIOD,OBS_VALUE,OBS_STATUS\n"

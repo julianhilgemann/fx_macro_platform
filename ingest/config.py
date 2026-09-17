@@ -30,8 +30,10 @@ RAW_DIR: Path = _path_env("RAW_DIR", REPO_ROOT / "raw")
 FRED_API_KEY: str | None = os.getenv("FRED_API_KEY") or None
 FRED_BASE_URL = "https://api.stlouisfed.org/fred/series/observations"
 
-# Source #2: Bundesbank statistics REST API (BBSSY flow). No key required.
-BUNDESBANK_BASE_URL = "https://api.statistiken.bundesbank.de/rest/data/BBSSY"
+# Source #2: Bundesbank statistics REST API. No key required. The *flow* is part
+# of each series key (BBSSY = observed yields, BBSIS = the Svensson term
+# structure), exactly as the ECB keys carry their dataflow.
+BUNDESBANK_BASE_URL = "https://api.statistiken.bundesbank.de/rest/data"
 
 # Source #3: ECB Data Portal (SDW) SDMX REST API. No key required.
 ECB_SDW_BASE_URL = "https://data-api.ecb.europa.eu/service/data"
@@ -178,11 +180,11 @@ SERIES: list[Series] = [
 
     # --- German Bund yields (Bundesbank BBSSY, daily) ---
     Series("DE2Y",  "bundesbank", "daily", "de_2y",
-           provider_key="D.REN.EUR.A610.000000WT0202.A"),      # German 2Y Bund (daily, from 2014)
+           provider_key="BBSSY/D.REN.EUR.A610.000000WT0202.A"),  # German 2Y Bund (daily, from 2014)
     Series("DE5Y",  "bundesbank", "daily", "de_5y",
-           provider_key="D.REN.EUR.A620.000000WT0505.A"),      # German 5Y Bund (Bundesobligation)
+           provider_key="BBSSY/D.REN.EUR.A620.000000WT0505.A"),  # German 5Y Bund (Bundesobligation)
     Series("DE10Y", "bundesbank", "daily", "de_10y",
-           provider_key="D.REN.EUR.A630.000000WT1010.A"),      # German 10Y Bund (daily)
+           provider_key="BBSSY/D.REN.EUR.A630.000000WT1010.A"),  # German 10Y Bund (daily)
 
     # --- Euro area macro (ECB SDW, monthly) ---
     Series("ECB_HICP",      "ecb", "monthly", "ea_hicp_yoy",
@@ -192,6 +194,26 @@ SERIES: list[Series] = [
     Series("ECB_UNRATE",    "ecb", "monthly", "ea_unemployment",
            provider_key="LFSI/M.U2.S.UNEHRT.TOTAL0.15_74.T"),  # EA unemployment rate (15-74, SA)
 ]
+
+# --- German Bund term structure (Bundesbank BBSIS, daily) --------------------
+# The Svensson-fitted curve for listed Federal securities, published per residual
+# maturity: a half-year bucket (R005X) then 1..30y (R01XX..R30XX). This is a
+# *model* curve and a different flow from the BBSSY quotes above, so it sits
+# alongside them and never replaces them — BBSSY gives observed yields of the
+# actual on-the-run bonds (2y/5y/10y only, from 2014), BBSIS gives a fitted curve
+# at every maturity (daily from 2000-08). Together they cover 0.5-30y with no
+# interpolation, which is what the yield-curve endpoint now relies on.
+_BBSIS_MATURITIES: list[tuple[str, str]] = (
+    [("005X", "6M")] + [(f"{m:02d}XX", f"{m}Y") for m in range(1, 31)]
+)
+BUND_TERM_STRUCTURE: list[Series] = [
+    Series(
+        f"DE_TS_{label}", "bundesbank", "daily", f"de_ts_{label.lower()}",
+        provider_key=f"BBSIS/D.I.ZST.ZI.EUR.S1311.B.A604.R{code}.R.A.A._Z._Z.A",
+    )
+    for code, label in _BBSIS_MATURITIES
+]
+SERIES.extend(BUND_TERM_STRUCTURE)
 
 PENDING_SERIES: list[Series] = []
 

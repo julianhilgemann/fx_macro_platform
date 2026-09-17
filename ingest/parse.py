@@ -73,21 +73,28 @@ def parse_bundesbank_csv(
     fetch_timestamp: datetime,
     raw_file: str,
 ) -> list[Observation]:
-    """Pure parser: a Bundesbank BBSSY CSV body -> validated records.
+    """Pure parser: a Bundesbank CSV body -> validated records.
 
-    The file has metadata header rows (Comment, Decimals, ...) followed by
-    `YYYY-MM-DD,value[,flag]` rows; missing values are ".". Data rows are the
-    ones whose first column is an ISO date, so header rows are skipped naturally.
+    Both Bundesbank flows land here. BBSSY (observed bond yields) prints daily
+    `YYYY-MM-DD` rows; BBSIS (the Svensson term structure) can also arrive as
+    `YYYY-MM` monthly rows. The file opens with metadata rows (Comment, Decimals,
+    ...) followed by `period,value[,flag]` rows, so data rows are the ones whose
+    first column parses as a period — header rows are skipped naturally. Missing
+    values are ".". Periods are normalised to first-of-period, the same
+    convention the ECB parser uses.
     """
     records: list[Observation] = []
     for row in csv.reader(io.StringIO(text)):
-        if not row or not _ISO_DATE.match(row[0].strip()):
+        if not row:
+            continue
+        period = _sdmx_period_to_date(row[0])
+        if period is None:
             continue
         records.append(
             Observation(
                 source=source,
                 series_id=series_id,
-                reference_period=date.fromisoformat(row[0].strip()),
+                reference_period=period,
                 value=_parse_value(row[1] if len(row) > 1 else None),
                 fetch_timestamp=fetch_timestamp,
                 raw_file=raw_file,
