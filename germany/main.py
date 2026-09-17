@@ -71,6 +71,18 @@ CURVE_TENORS: list[dict] = [
     {"label": "10Y", "maturity": 10.0},
 ]
 
+# The ECB policy corridor: deposit facility (floor) · main refinancing (mid) ·
+# marginal lending (ceiling). Every leg is a change-point series — a rate holds
+# until the governing council moves it — which is what makes the ribbon between
+# floor and ceiling mean something: the corridor is as wide as the current stance
+# and nothing wider. `/api/snapshot` and `/api/indicator/{id}` ship these legs so
+# the tile sparkline and the big chart can both draw the corridor itself.
+CORRIDOR_LEGS: list[dict] = [
+    {"role": "floor", "series_id": "ECBDFR"},
+    {"role": "mid", "series_id": "ECB_MRO"},
+    {"role": "ceiling", "series_id": "ECB_MLF"},
+]
+
 # Headline KPI tiles (2 rows × 5). `series_id` feeds value/deltas/sparkline and
 # the hero history; `spread` of two series yields a computed difference. `step`
 # is the default resample for the hero chart (weekly for daily series).
@@ -87,9 +99,10 @@ KPIS: list[dict] = [
     {"id": "de5y", "label": "5Y Bund Yield", "series_id": "DE5Y",
      "unit": "%", "decimals": 2, "tone": "yield", "color": "#4dd6c1", "step": "W",
      "subtitle": "German 5-year Bund — the middle of the curve"},
-    {"id": "ecb", "label": "ECB Deposit Rate", "series_id": "ECBDFR",
+    {"id": "ecb", "label": "ECB Policy Corridor", "series_id": "ECBDFR",
      "unit": "%", "decimals": 2, "tone": "rate", "color": "#ff7aa2", "step": "W",
-     "subtitle": "ECB deposit facility — the policy floor"},
+     "corridor": True,
+     "subtitle": "Deposit facility (floor) · MRO (main rate) · marginal lending (ceiling)"},
     {"id": "hicp", "label": "EA Inflation (HICP)", "series_id": "ECB_HICP",
      "unit": "% YoY", "decimals": 1, "tone": "inflation", "color": "#f0a63a",
      "subtitle": "Euro-area headline inflation, year-over-year"},
@@ -204,6 +217,35 @@ def _resample(points: list[tuple[date, float]], step: str | None) -> list[tuple[
             raise HTTPException(status_code=400, detail=f"unknown step '{step}'")
         buckets[key] = (d, v)
     return sorted(buckets.values())
+
+
+def _corridor(conn, step: str | None = None, start: date | None = None) -> list[dict]:
+    """The three corridor legs as one payload.
+
+    Each leg keeps its own change-point observations — the client forward-fills
+    them onto a shared grid to draw the ribbon, so no synthetic rows are minted
+    here. `start` trims the tile sparkline window; the last observation *before*
+    the window is kept so the level is defined at its left edge.
+    """
+    legs: list[dict] = []
+    for leg in CORRIDOR_LEGS:
+        pts = _fetch_observations(conn, leg["series_id"], start, None)
+        if start:
+            prior = _rows(
+                conn,
+                """SELECT obs_date, value FROM marts.fct_macro_observation_latest
+                   WHERE series_id = %s AND obs_date < %s
+                   ORDER BY obs_date DESC LIMIT 1""",
+                [leg["series_id"], start],
+            )
+            if prior:
+                pts = [(prior[0]["obs_date"], float(prior[0]["value"]))] + pts
+        legs.append({
+            "role": leg["role"],
+            "series_id": leg["series_id"],
+            "values": [[_iso(d), round(v, 6)] for d, v in _resample(pts, step)],
+        })
+    return legs
 
 
 # --- PCHIP (monotone cubic Hermite) interpolation ---------------------------
@@ -375,7 +417,7 @@ def snapshot() -> dict:
 
             d1m = _value_at(pts, last_date - timedelta(days=31))
             d1y = _value_at(pts, last_date - timedelta(days=365))
-            kpis.append({
+            card = {
                 "id": k["id"],
                 "label": k["label"],
                 "unit": k.get("unit", ""),
@@ -389,7 +431,11 @@ def snapshot() -> dict:
                 "delta_1m": _delta(last_value, d1m),
                 "delta_1y": _delta(last_value, d1y),
                 "spark": spark,
-            })
+            }
+            if k.get("corridor"):
+                # same window as the sparkline, so the ribbon sits under it exactly
+                card["corridor"] = _corridor(conn, None, start=pts[-260][0])
+            kpis.append(card)
 
         wb = _warehouse_build(conn)
     return {"as_of": max((k["last_date"] for k in kpis if k["last_date"]), default=None),
@@ -507,6 +553,7 @@ def indicator_history(kpi_id: str, step: str | None = Query(None)) -> dict:
         raise HTTPException(status_code=404, detail=f"unknown indicator '{kpi_id}'")
 
     start = date.today() - timedelta(days=MAX_RANGE_DAYS)
+    eff_step = step if step is not None else k.get("step")
     with _connect() as conn:
         if k.get("spread"):
             a = _fetch_observations(conn, k["spread"][0], start, None)
@@ -515,9 +562,9 @@ def indicator_history(kpi_id: str, step: str | None = Query(None)) -> dict:
             pts = [(d, v * k.get("factor", 1)) for d, v in pts]
         else:
             pts = _fetch_observations(conn, k["series_id"], start, None)
+        corridor = _corridor(conn, eff_step, start=start) if k.get("corridor") else []
         wb = _warehouse_build(conn)
 
-    eff_step = step if step is not None else k.get("step")
     data = [{"date": _iso(d), "value": round(v, 6)} for d, v in _resample(pts, eff_step)]
     return {
         "id": k["id"],
@@ -530,6 +577,7 @@ def indicator_history(kpi_id: str, step: str | None = Query(None)) -> dict:
         "as_of": data[-1]["date"] if data else None,
         "ref": REF_LINES.get(k["id"], []),
         "data": data,
+        "corridor": corridor,
         "meta": {"row_count": len(data), "warehouse_build": wb},
     }
 

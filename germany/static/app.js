@@ -21,7 +21,21 @@ const C = {
   faint:  "#5f6b82",
   grid:   "rgba(255,255,255,0.055)",
   border: "rgba(255,255,255,0.08)",
+  band:   "#8ea2ff",
 };
+
+/* ------------------------------------------------- ECB policy corridor ----
+   The corridor is the ribbon between two standing facilities. The MRO is the
+   rate the ECB actually steers, so it carries the solid line while the deposit
+   facility (floor) and the marginal lending facility (ceiling) are dashed, and
+   the space between them is shaded. Roles come from the API; the look lives
+   here. */
+const CORRIDOR = {
+  floor:   { name: "Deposit (floor)",            color: "#4dd6c1", dashed: true  },
+  mid:     { name: "MRO (main)",                 color: "#f6b94b", dashed: false },
+  ceiling: { name: "Marginal lending (ceiling)", color: "#ff7aa2", dashed: true  },
+};
+const BAND = { color: C.band, opacity: 0.13 };
 
 /* ---------------------------------------------------------------- helpers */
 const $ = (sel) => document.querySelector(sel);
@@ -57,6 +71,49 @@ function chartSize(sel) {
   return { width: node.clientWidth || 640, height: node.clientHeight || 360 };
 }
 
+/* ------------------------------------------------------- corridor helpers */
+/* API legs ({role, series_id, values}) -> drawable series, look filled in. */
+function corridorLegs(legs) {
+  return (legs || [])
+    .filter(l => l && l.values && l.values.length)
+    .map(l => {
+      const look = CORRIDOR[l.role] || {};
+      return {
+        role: l.role,
+        name: look.name || l.series_id || l.role,
+        color: look.color || C.muted,
+        dashed: !!look.dashed,
+        values: l.values,
+      };
+    });
+}
+
+/* The shaded area spans floor -> ceiling; names have to survive the round trip
+   through timeChart, so they are read back off the built series. */
+function corridorBand(series) {
+  const floor = series.find(s => s.role === "floor");
+  const ceiling = series.find(s => s.role === "ceiling");
+  if (!floor || !ceiling) return null;
+  return { from: floor.name, to: ceiling.name, color: BAND.color, opacity: BAND.opacity };
+}
+
+/* Forward-fill two change-point series onto their merged date grid so an area
+   can be drawn between them: rows are [date, lower, upper]. Policy rates do not
+   share timestamps (each one moves only at its own meeting), and this is what
+   lets the ribbon span the true corridor at every x instead of lurching between
+   whichever two observations happen to line up. */
+function alignStep(a, b) {
+  const dates = Array.from(new Set(a.concat(b).map(p => +p[0]))).sort((m, n) => m - n);
+  const rows = [];
+  let lo = null, hi = null, i = 0, j = 0;
+  for (const t of dates) {
+    while (i < a.length && +a[i][0] <= t) lo = a[i++][1];
+    while (j < b.length && +b[j][0] <= t) hi = b[j++][1];
+    if (lo != null && hi != null) rows.push([new Date(t), lo, hi]);
+  }
+  return rows;
+}
+
 /* ---------------------------------------------------------------- loader */
 async function getJSON(url) {
   const res = await fetch(url, { cache: "no-store" });
@@ -72,7 +129,7 @@ function renderKpis(snapshot) {
   kpiData = snapshot.kpis;
   const grid = d3.select("#kpiGrid");
   grid.selectAll(".kpi").data(kpiData).join("div")
-    .attr("class", "kpi")
+    .attr("class", d => (d.corridor && d.corridor.length ? "kpi is-corridor" : "kpi"))
     .style("--i", (d, i) => i)
     .on("click", (ev, d) => selectKpi(d.id))
     .each(function (d) { buildKpi(this, d); });
@@ -96,7 +153,8 @@ function buildKpi(node, d) {
   el.html("");
 
   // layers: sparkline (z0) → shade gradient (z1) → text content (z2)
-  if (d.spark && d.spark.length > 1) sparkline(el, d.spark, d.color);
+  if (d.corridor && d.corridor.length) corridorSpark(el, d.spark, d.corridor);
+  else if (d.spark && d.spark.length > 1) sparkline(el, d.spark, d.color);
   el.append("div").attr("class", "k-shade");
   const content = el.append("div").attr("class", "k-content");
 
@@ -153,6 +211,43 @@ function sparkline(el, points, color) {
     .attr("stroke", color).attr("stroke-width", 1.4).attr("vector-effect", "non-scaling-stroke");
 }
 
+/* Tile-sized version of the corridor chart: shaded ribbon, dashed floor and
+   ceiling, solid MRO. Same 100×34 space as the plain sparkline, but x has to be
+   a real time scale — the three legs step on different dates, so an index-based
+   axis would shear the ribbon. `points` is the tile's own spark and only fixes
+   the window. */
+function corridorSpark(el, points, payload) {
+  const legs = corridorLegs(payload);
+  const floor = legs.find(l => l.role === "floor");
+  const ceiling = legs.find(l => l.role === "ceiling");
+  if (!legs.length || !points || points.length < 2) return;
+
+  const wrap = el.append("div").attr("class", "k-spark is-corridor");
+  const svg = wrap.append("svg").attr("viewBox", "0 0 100 34").attr("preserveAspectRatio", "none");
+
+  const x = d3.scaleTime()
+    .domain(d3.extent(points.map(p => parseISO(p[0]))))
+    .range([0, 100]);
+  const values = legs.flatMap(l => l.values.map(p => +p[1]));
+  const y = d3.scaleLinear().domain(d3.extent(values)).range([30, 3]);
+
+  legs.forEach(l => { l.pts = l.values.map(p => [parseISO(p[0]), +p[1]]); });
+
+  if (floor && ceiling) {
+    svg.append("path").datum(alignStep(floor.pts, ceiling.pts))
+      .attr("d", d3.area().x(d => x(d[0])).y0(d => y(d[1])).y1(d => y(d[2])).curve(d3.curveStepAfter))
+      .attr("fill", BAND.color).attr("opacity", 0.20).attr("stroke", "none");
+  }
+  legs.forEach(l => {
+    svg.append("path").datum(l.pts)
+      .attr("d", d3.line().x(p => x(p[0])).y(p => y(p[1])).curve(d3.curveStepAfter))
+      .attr("fill", "none").attr("stroke", l.color)
+      .attr("stroke-width", l.dashed ? 1.1 : 1.7)
+      .attr("stroke-dasharray", l.dashed ? "3 2.2" : null)
+      .attr("vector-effect", "non-scaling-stroke");
+  });
+}
+
 /* ---------------------------------------------------------------- hero chart */
 let heroCache = null; // { id, hist }
 
@@ -187,6 +282,18 @@ async function renderHero(kpi) {
 
 function drawHeroChart(kpi, hist) {
   const pctSuffix = (kpi.unit || "")[0] === "%" ? "%" : "";
+  const legs = corridorLegs(hist.corridor);
+  if (legs.length > 1) {
+    // corridor indicators get the whole corridor, not just their own series
+    timeChart(d3.select("#heroChart"), {
+      series: legs,
+      band: corridorBand(legs),
+      curve: d3.curveStepAfter,
+      refLines: hist.ref || [],
+      yFormat: v => fmtNum(v, kpi.decimals) + pctSuffix,
+    });
+    return;
+  }
   timeChart(d3.select("#heroChart"), {
     series: [{ name: kpi.label, color: hist.color || kpi.color, values: hist.data.map(o => [o.date, o.value]), area: true }],
     refLines: hist.ref || [],
@@ -223,6 +330,23 @@ function timeChart(sel, cfg) {
 
   const yFmt = cfg.yFormat || (v => fmtNum(v, 2));
   const xFmt = cfg.xFormat || (d => d3.timeFormat("%Y")(d));
+
+  // corridor ribbon: shaded area between two series, drawn under the gridlines
+  // so those stay crisp. The band's curve must match the series' so its edges
+  // land exactly on the dashed floor / ceiling lines (see alignStep).
+  if (cfg.band) {
+    const under = series.find(s => s.name === cfg.band.from);
+    const over = series.find(s => s.name === cfg.band.to);
+    const rows = under && over ? alignStep(under.pts, over.pts) : [];
+    if (rows.length > 1) {
+      g.append("path").datum(rows).attr("class", "corridor-band")
+        .attr("d", d3.area().x(d => x(d[0])).y0(d => y(d[1])).y1(d => y(d[2]))
+          .curve(cfg.curve || d3.curveMonotoneX))
+        .attr("fill", cfg.band.color || BAND.color)
+        .attr("opacity", cfg.band.opacity == null ? BAND.opacity : cfg.band.opacity)
+        .attr("stroke", "none");
+    }
+  }
 
   // horizontal gridlines + y axis
   const yTicks = y.ticks(5);
@@ -461,12 +585,15 @@ function renderInflation(hicp, core) {
   });
 }
 function renderCorridor(dfr, mro, mlf) {
+  const legs = corridorLegs([
+    { role: "floor", values: dfr },
+    { role: "mid", values: mro },
+    { role: "ceiling", values: mlf },
+  ]);
   timeChart(d3.select("#corridor"), {
-    series: [
-      { name: "Deposit (floor)", color: C.teal, values: dfr, area: true },
-      { name: "MRO (mid)", color: C.gold, values: mro },
-      { name: "Lending (ceiling)", color: C.rose, values: mlf },
-    ],
+    series: legs,
+    band: corridorBand(legs),
+    curve: d3.curveStepAfter, // policy rates hold, then step — never ramp
     yFormat: v => fmtNum(v, 1) + "%",
   });
 }

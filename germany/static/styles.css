@@ -312,6 +312,12 @@ body {
 .delta .tag { font-weight: 500; opacity: 0.75; }
 .kpi .k-spark { position: absolute; right: 0; bottom: 0; left: 0; height: 44px; opacity: 0.9; pointer-events: none; z-index: 0; }
 .kpi .k-spark svg { display: block; width: 100%; height: 100%; }
+/* corridor tile: the sparkline is the point of the tile, so give it more room
+   and a lighter shade — a hairline floor line at 0.9 alpha would be invisible */
+.kpi.is-corridor .k-spark { height: 54px; opacity: 1; }
+.kpi.is-corridor .k-shade {
+  background: linear-gradient(to top, rgba(6, 8, 14, 0.84) 0%, rgba(6, 8, 14, 0.40) 52%, transparent 100%);
+}
 
 /* ---------- cards / sections ---------------------------------------------- */
 .card {
