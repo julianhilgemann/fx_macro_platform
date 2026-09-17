@@ -37,6 +37,11 @@ const CORRIDOR = {
 };
 const BAND = { color: C.band, opacity: 0.13 };
 
+/* Maturity ramp for the term-structure fan: short end cool → long end warm. It
+   encodes *where on the curve* a line sits, not its identity — the tooltip
+   carries the numbers. */
+const RAMP = [C.teal, C.blue, C.violet, C.gold, C.rose];
+
 /* ---------------------------------------------------------------- helpers */
 const $ = (sel) => document.querySelector(sel);
 const fmtNum = (v, d = 2) => {
@@ -120,6 +125,96 @@ async function getJSON(url) {
   if (!res.ok) throw new Error(`${url} → ${res.status}`);
   return res.json();
 }
+
+/* ------------------------------------------------------------ chart shell --
+   Large charts are self-sizing: they read their container's client box, so the
+   only honest way to redraw one at a different size is to run its own draw
+   closure again. Each chart therefore registers how to draw itself, which is
+   what the lightbox below re-invokes after moving the node to full view. */
+const REDRAW = new Map();   // chart container id -> draw closure
+
+function attachExpand(id) {
+  const node = document.getElementById(id);
+  if (!node || node.querySelector(":scope > .chart-expand")) return;
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "chart-expand";
+  btn.title = "Expand chart";
+  btn.setAttribute("aria-label", "Expand chart to full view");
+  btn.innerHTML =
+    '<svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" ' +
+    'stroke-width="1.4" stroke-linecap="round">' +
+    '<circle cx="7" cy="7" r="4.4" />' +
+    '<line x1="10.4" y1="10.4" x2="14.2" y2="14.2" />' +
+    "</svg>";
+  btn.addEventListener("click", (ev) => { ev.stopPropagation(); openLightbox(id); });
+  node.appendChild(btn);
+}
+
+/* Register a chart's draw closure, draw it, and give it the magnifier. */
+function registerChart(id, draw) {
+  REDRAW.set(id, draw);
+  draw();
+  attachExpand(id);
+}
+
+/* Draw a time series into #id, remember how, and give it the magnifier. */
+function chart(id, cfg) {
+  const sel = d3.select("#" + id);
+  registerChart(id, () => timeChart(sel, cfg));
+}
+
+/* Redraw a chart at its container's current size. The draw closure is pure — it
+   clears the container, which takes the magnifier with it — so every redraw that
+   happens outside registerChart() goes through here to put the affordance back. */
+function redrawChart(id) {
+  REDRAW.get(id)?.();
+  attachExpand(id);
+}
+
+let lightboxOpen = null;   // { id, parent, next }
+
+function openLightbox(id) {
+  const node = document.getElementById(id);
+  if (!node || lightboxOpen) return;
+  const card = node.closest(".card");
+
+  $("#lightboxTitle").textContent = card?.querySelector("h2")?.textContent || "";
+  $("#lightboxSub").textContent = card?.querySelector(".card-sub")?.textContent || "";
+
+  // remember the exact slot so closing puts the chart back where it was
+  lightboxOpen = { id, parent: node.parentNode, next: node.nextSibling };
+  $("#lightboxPanel").appendChild(node);
+  $("#lightbox").classList.add("is-open");
+  $("#lightbox").setAttribute("aria-hidden", "false");
+  document.body.classList.add("is-lightbox");
+
+  // after layout, so chartSize() reads the panel's real box
+  requestAnimationFrame(() => redrawChart(id));
+}
+
+function closeLightbox() {
+  if (!lightboxOpen) return;
+  const { id, parent, next } = lightboxOpen;
+  lightboxOpen = null;
+  const node = document.getElementById(id);
+  if (node) parent.insertBefore(node, next);   // back into its card, same slot
+
+  $("#lightbox").classList.remove("is-open");
+  $("#lightbox").setAttribute("aria-hidden", "true");
+  document.body.classList.remove("is-lightbox");
+  hideTooltip();
+  redrawChart(id);                             // redraw at card size
+}
+
+$("#lightboxClose").addEventListener("click", closeLightbox);
+$("#lightbox").addEventListener("mousedown", (ev) => {
+  // only the dimmed backdrop dismisses — clicks inside the panel are the chart's
+  if (ev.target === $("#lightbox")) closeLightbox();
+});
+window.addEventListener("keydown", (ev) => {
+  if (ev.key === "Escape") closeLightbox();
+});
 
 /* ---------------------------------------------------------------- KPI tiles */
 let selectedId = "de10y";
@@ -273,7 +368,7 @@ async function renderHero(kpi) {
       hist = await getJSON(`/api/indicator/${kpi.id}`);
       heroCache = { id: kpi.id, hist };
     }
-    drawHeroChart(kpi, hist);
+    registerChart("heroChart", () => drawHeroChart(kpi, hist));
   } catch (err) {
     console.error("hero chart:", err);
     d3.select("#heroChart").html(`<div class="surface-hint">Failed to load ${kpi.label} — ${err.message}</div>`);
@@ -313,7 +408,7 @@ function timeChart(sel, cfg) {
   const g = svg.append("g").attr("transform", `translate(${margin.left},${margin.top})`);
 
   const series = cfg.series.map(s => ({
-    name: s.name, color: s.color, area: s.area, dashed: s.dashed,
+    name: s.name, color: s.color, area: s.area, dashed: s.dashed, width: s.width,
     pts: s.values.map(d => [parseISO(d[0]), +d[1]]).filter(p => isFinite(p[1])),
   }));
 
@@ -393,7 +488,7 @@ function timeChart(sel, cfg) {
   series.forEach(s => {
     const path = g.append("path").datum(s.pts)
       .attr("fill", "none").attr("stroke", s.color)
-      .attr("stroke-width", s.dashed ? 1.6 : 2.2)
+      .attr("stroke-width", s.width || (s.dashed ? 1.6 : 2.2))
       .attr("stroke-dasharray", s.dashed ? "5 4" : null)
       .attr("stroke-linejoin", "round").attr("stroke-linecap", "round")
       .attr("d", line);
@@ -430,15 +525,37 @@ function timeChart(sel, cfg) {
       });
       if (!rows.length || !rows[0].p) return;
       const date = rows[0].p[0];
+      // a 31-tenor fan would otherwise produce a 31-row tooltip taller than the
+      // chart, so a chart can nominate the rows worth reading (cfg.tooltipKeys)
+      const shown = cfg.tooltipKeys ? rows.filter(r => cfg.tooltipKeys.includes(r.s.name)) : rows;
       focus.attr("opacity", 1).attr("x1", x(date)).attr("x2", x(date));
-      dots.selectAll("circle").data(rows).join("circle")
+      dots.selectAll("circle").data(shown).join("circle")
         .attr("cx", r => x(r.p[0])).attr("cy", r => y(r.p[1]))
         .attr("r", 3.4).attr("fill", r => r.s.color).attr("stroke", "#0a0d17").attr("stroke-width", 1.4);
       const html = `<div class="tt-row"><span class="tt-label">${fmtDate(date)}</span></div>` +
-        rows.map(r => `<div class="tt-row"><span class="tt-label"><span class="tt-swatch" style="background:${r.s.color}"></span>${r.s.name}</span><span class="tt-value">${yFmt(r.p[1])}</span></div>`).join("");
+        shown.map(r => `<div class="tt-row"><span class="tt-label"><span class="tt-swatch" style="background:${r.s.color}"></span>${r.s.name}</span><span class="tt-value">${yFmt(r.p[1])}</span></div>`).join("");
       showTooltip(html, ev.clientX, ev.clientY);
     })
     .on("mouseleave", () => { focus.attr("opacity", 0); dots.selectAll("circle").remove(); hideTooltip(); });
+
+  // colour-ramp legend, for charts where colour encodes a dimension rather than
+  // a series identity (drawn in the top margin, above the plot)
+  if (cfg.ramp) {
+    const rw = 84, rh = 7;
+    const rg = svg.append("g").attr("transform", `translate(${margin.left + iw - rw - 30}, 3)`);
+    const gid = `ramp-${Math.random().toString(36).slice(2)}`;
+    rg.append("defs").append("linearGradient").attr("id", gid)
+      .attr("x1", 0).attr("y1", 0).attr("x2", 1).attr("y2", 0)
+      .selectAll("stop").data(cfg.ramp.colors).join("stop")
+      .attr("offset", (d, i, a) => i / (a.length - 1)).attr("stop-color", d => d);
+    rg.append("rect").attr("width", rw).attr("height", rh).attr("rx", 3.5)
+      .attr("fill", `url(#${gid})`).attr("opacity", 0.9);
+    rg.append("text").attr("x", -6).attr("y", rh / 2).attr("dy", "0.32em")
+      .attr("text-anchor", "end").attr("fill", C.faint).style("font-size", "10px")
+      .text(cfg.ramp.from);
+    rg.append("text").attr("x", rw + 6).attr("y", rh / 2).attr("dy", "0.32em")
+      .attr("fill", C.faint).style("font-size", "10px").text(cfg.ramp.to);
+  }
 }
 
 /* ---------------------------------------------------------------- page init */
@@ -468,15 +585,12 @@ async function init() {
 
   // secondary charts (independent fetches, cached for responsive re-render)
   try {
-    const [hicp, core, dfr, mro, mlf, de2, de5, de10, unrate, fx, gas] = await Promise.all([
+    const [hicp, core, dfr, mro, mlf, unrate, fx, gas] = await Promise.all([
       getJSON("/api/observations/ECB_HICP"),
       getJSON("/api/observations/ECB_HICP_CORE"),
       getJSON("/api/observations/ECBDFR?step=M"),
       getJSON("/api/observations/ECB_MRO?step=M"),
       getJSON("/api/observations/ECB_MLF?step=M"),
-      getJSON("/api/observations/DE2Y?step=M"),
-      getJSON("/api/observations/DE5Y?step=M"),
-      getJSON("/api/observations/DE10Y?step=M"),
       getJSON("/api/observations/ECB_UNRATE"),
       getJSON("/api/observations/DEXUSEU?step=W"),
       getJSON("/api/observations/PNGASEUUSDM"),
@@ -485,7 +599,6 @@ async function init() {
     state.secondary = {
       hicp: val(hicp), core: val(core),
       dfr: val(dfr), mro: val(mro), mlf: val(mlf),
-      de2: val(de2), de5: val(de5), de10: val(de10),
       unrate: val(unrate), fx: val(fx), gas: val(gas),
     };
     renderSecondary(state.secondary);
@@ -497,7 +610,7 @@ async function init() {
 function renderSecondary(s) {
   renderInflation(s.hicp, s.core);
   renderCorridor(s.dfr, s.mro, s.mlf);
-  renderBundYields(s.de2, s.de5, s.de10);
+  renderBundYields(state.curve);   // the term structure rides on the curve payload
   renderUnemployment(s.unrate);
   renderFx(s.fx);
   renderEnergy(s.gas);
@@ -515,22 +628,33 @@ window.addEventListener("resize", () => {
   }, 160);
 });
 
+/* Yield-curve snapshot — a cross-section, not a time series. Every tenor is a
+   real Bundesbank BBSIS term-structure observation, so nothing here is
+   interpolated. The maturity axis is log-scaled because 0.5y..30y on a linear
+   axis would squeeze the whole informative short end (0.5-5y) into the first
+   15% of the width. The dots are the observed on-the-run bond yields (BBSSY):
+   a different measure from the fitted curve, drawn for comparison. */
 function renderCurveSnapshot(curve) {
-  const latest = curve.latest.map(d => [d.maturity, d.value]);
-  const prev = curve.one_year_ago_curve.map(d => [d.maturity, d.value]);
-  const anchors = curve.latest_anchors.map(d => [d.maturity, d.value]);
+  registerChart("curveSnapshot", () => drawCurveSnapshot(curve));
+}
+
+function drawCurveSnapshot(curve) {
+  const pts = (rows) => (rows || []).filter(d => d.value != null).map(d => [d.maturity, d.value]);
+  const latest = pts(curve.latest);
+  const prev = pts(curve.one_year_ago_curve);
+  const observed = pts(curve.latest_anchors);
 
   const el = d3.select("#curveSnapshot");
   el.html("");
   const { width, height } = chartSize(el);
-  const margin = { top: 20, right: 20, bottom: 32, left: 46 };
+  const margin = { top: 26, right: 20, bottom: 32, left: 46 };
   const iw = width - margin.left - margin.right, ih = height - margin.top - margin.bottom;
   const svg = el.append("svg").attr("width", width).attr("height", height);
   const g = svg.append("g").attr("transform", `translate(${margin.left},${margin.top})`);
 
-  const xs = latest.concat(prev).map(d => d[0]);
-  const x = d3.scaleLinear().domain(d3.extent(xs)).range([0, iw]);
-  const ymin = d3.min(latest.concat(prev).map(d => d[1])), ymax = d3.max(latest.concat(prev).map(d => d[1]));
+  const x = d3.scaleLog().domain(d3.extent(latest.concat(prev).map(d => d[0]))).range([0, iw]);
+  const vals = latest.concat(prev).map(d => d[1]);
+  const ymin = d3.min(vals), ymax = d3.max(vals);
   const pad = (ymax - ymin) * 0.1 || 0.2;
   const y = d3.scaleLinear().domain([ymin - pad, ymax + pad]).nice().range([ih, 0]);
 
@@ -540,15 +664,15 @@ function renderCurveSnapshot(curve) {
     .attr("x", -8).attr("y", d => y(d)).attr("dy", "0.32em").attr("text-anchor", "end")
     .attr("fill", C.faint).style("font-size", "10.5px").text(d => d + "%");
 
-  const xlabels = ["1M", "3M", "6M", "1Y", "2Y", "3Y", "4Y", "5Y", "7Y", "10Y"];
-  const xl = d3.scaleLinear().domain([0, 9]).range([0, iw]);
-  g.selectAll("text.xtick").data(xlabels).join("text")
-    .attr("x", (d, i) => x(curve.tenors[i].maturity)).attr("y", ih + 18)
+  g.selectAll("text.xtick").data([[0.5, "6M"], [1, "1Y"], [2, "2Y"], [5, "5Y"], [10, "10Y"], [20, "20Y"], [30, "30Y"]])
+    .join("text").attr("x", d => x(d[0])).attr("y", ih + 18)
     .attr("text-anchor", "middle").attr("fill", C.faint).style("font-size", "10px")
-    .text(d => d);
+    .text(d => d[1]);
 
   const line = d3.line().x(d => x(d[0])).y(d => y(d[1])).curve(d3.curveMonotoneX);
-  const area = d3.area().x(d => x(d[0])).y0(y(0)).y1(d => y(d[1])).curve(d3.curveMonotoneX);
+  // fill down to the axis floor: y(0) sits well outside the plot box (yields are
+  // nowhere near 0%) and would bleed out over the tick labels
+  const area = d3.area().x(d => x(d[0])).y0(ih).y1(d => y(d[1])).curve(d3.curveMonotoneX);
 
   // one year ago (dashed, muted)
   g.append("path").datum(prev).attr("d", line).attr("fill", "none")
@@ -557,8 +681,8 @@ function renderCurveSnapshot(curve) {
   g.append("path").datum(latest).attr("d", area).attr("fill", C.gold).attr("opacity", 0.10).attr("stroke", "none");
   g.append("path").datum(latest).attr("d", line).attr("fill", "none")
     .attr("stroke", C.gold).attr("stroke-width", 2.4).attr("stroke-linejoin", "round");
-  // anchors (real rates)
-  g.selectAll("circle").data(anchors).join("circle")
+  // observed bond yields
+  g.selectAll("circle").data(observed).join("circle")
     .attr("cx", d => x(d[0])).attr("cy", d => y(d[1]))
     .attr("r", 4).attr("fill", C.gold2).attr("stroke", "#0a0d17").attr("stroke-width", 1.5);
 
@@ -572,10 +696,15 @@ function renderCurveSnapshot(curve) {
   l2.append("line").attr("x1", 0).attr("x2", 16).attr("y1", 0).attr("y2", 0)
     .attr("stroke", C.faint).attr("stroke-width", 1.8).attr("stroke-dasharray", "5 4");
   l2.append("text").attr("x", 22).attr("y", 3).attr("fill", C.muted).style("font-size", "10.5px").text("1y ago");
+  const l3 = leg.append("g").attr("transform", "translate(160,0)");
+  l3.append("circle").attr("cx", 4).attr("cy", 0).attr("r", 4)
+    .attr("fill", C.gold2).attr("stroke", "#0a0d17").attr("stroke-width", 1.4);
+  l3.append("text").attr("x", 22).attr("y", 3).attr("fill", C.muted).style("font-size", "10.5px")
+    .text("observed 2/5/10Y");
 }
 
 function renderInflation(hicp, core) {
-  timeChart(d3.select("#inflation"), {
+  chart("inflation", {
     series: [
       { name: "HICP headline", color: C.gold, values: hicp, area: true },
       { name: "HICP core", color: C.blue, values: core },
@@ -590,38 +719,57 @@ function renderCorridor(dfr, mro, mlf) {
     { role: "mid", values: mro },
     { role: "ceiling", values: mlf },
   ]);
-  timeChart(d3.select("#corridor"), {
+  chart("corridor", {
     series: legs,
     band: corridorBand(legs),
     curve: d3.curveStepAfter, // policy rates hold, then step — never ramp
     yFormat: v => fmtNum(v, 1) + "%",
   });
 }
-function renderBundYields(de2, de5, de10) {
-  timeChart(d3.select("#bundYields"), {
-    series: [
-      { name: "10Y", color: C.gold, values: de10 },
-      { name: "5Y", color: C.blue, values: de5 },
-      { name: "2Y", color: C.violet, values: de2 },
-    ],
+/* The whole term structure through time: one line per BBSIS tenor, colour-ramped
+   from the short end (cool) to the long end (warm). The card used to carry only
+   the three observed BBSSY quotes; the fitted curve is real at every tenor, so
+   the fan shows the curve's shape through the cycle — an inversion reads as the
+   short-end lines crossing above the long end.
+
+   Reads straight off the curve payload's monthly `surface` (314 month-ends × 31
+   tenors), which the page already fetches for the snapshot card — no extra
+   requests, and every point comes from one consistent vintage. */
+function renderBundYields(curve) {
+  if (!curve) return;
+  const ramp = d3.scaleSequential(d3.interpolateRgbBasis(RAMP)).domain([0.5, 30]);
+  const series = curve.tenors.map((t, j) => ({
+    name: t.label,
+    color: ramp(t.maturity),
+    width: 1.2,   // 31 lines: any thicker and the fan becomes a slab
+    values: curve.dates
+      .map((d, i) => [d, curve.surface[i][j]])
+      .filter(p => p[1] != null),   // +null would coerce to a 0% line
+  })).filter(s => s.values.length > 1);
+
+  chart("bundYields", {
+    series,
+    tooltipKeys: ["6M", "1Y", "2Y", "5Y", "10Y", "30Y"],
+    ramp: { from: "6M", to: "30Y", colors: RAMP },
+    animate: false,   // 31 concurrent draw-on transitions is just noise
     yFormat: v => fmtNum(v, 2) + "%",
     curve: d3.curveMonotoneX,
   });
 }
 function renderUnemployment(unrate) {
-  timeChart(d3.select("#unemployment"), {
+  chart("unemployment", {
     series: [{ name: "EA unemployment", color: C.rose, values: unrate, area: true }],
     yFormat: v => fmtNum(v, 1) + "%",
   });
 }
 function renderFx(fx) {
-  timeChart(d3.select("#fx"), {
+  chart("fx", {
     series: [{ name: "EUR/USD", color: C.blue, values: fx, area: true }],
     yFormat: v => fmtNum(v, 3),
   });
 }
 function renderEnergy(gas) {
-  timeChart(d3.select("#energy"), {
+  chart("energy", {
     series: [{ name: "EU natural gas (USD/mmBtu)", color: C.teal, values: gas, area: true }],
     yFormat: v => fmtNum(v, 1),
   });

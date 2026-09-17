@@ -451,9 +451,11 @@ footer a { color: var(--text-muted); text-decoration: none; }
 footer a:hover { color: var(--accent); }
 
 /* ---------- tooltip --------------------------------------------------------- */
+/* Sits above the lightbox (60): a chart expanded to full view is still a chart,
+   and its readout has to stay on top of the dimmed backdrop and the panel. */
 .tooltip {
   position: fixed;
-  z-index: 20;
+  z-index: 70;
   pointer-events: none;
   padding: 10px 12px;
   border-radius: 12px;
@@ -474,6 +476,97 @@ footer a:hover { color: var(--accent); }
 .tooltip .tt-label { color: var(--text-muted); font-size: 11px; }
 .tooltip .tt-value { font-weight: 650; font-variant-numeric: tabular-nums; }
 .tooltip .tt-swatch { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
+
+/* ---------- chart expand affordance ---------------------------------------- */
+/* A magnifier at the foot of every large chart: barely there until you look for
+   it, then it wakes up in the accent. The button box is deliberately bigger than
+   the glyph so it is a comfortable tap target on touch, where :hover never
+   fires — hence the always-visible faint state rather than a hover-only reveal. */
+.chart-expand {
+  position: absolute;
+  left: 50%; bottom: 1px;
+  transform: translateX(-50%);
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 42px; height: 26px;
+  padding: 0;
+  border: 0; background: none;
+  color: var(--text-faint);
+  opacity: 0.3;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  z-index: 3;
+  transition: opacity var(--dur) var(--ease), color var(--dur) var(--ease),
+              background var(--dur) var(--ease), transform var(--dur) var(--ease);
+}
+.chart-expand svg { display: block; }
+/* hovering anywhere on the card nudges it towards visible */
+.card:hover .chart-expand { opacity: 0.55; }
+.chart-expand:hover,
+.chart-expand:focus-visible {
+  opacity: 1;
+  color: var(--accent);
+  background: var(--accent-soft);
+  transform: translateX(-50%) scale(1.12);
+}
+.chart-expand:focus-visible { outline: 1px solid var(--accent); outline-offset: 2px; }
+
+/* ---------- chart lightbox -------------------------------------------------- */
+/* Viewport-sized chart over a dimmed, blurred page. The panel is a flex column
+   so the chart itself takes the slack: the D3 renderers size from the
+   container's client box, so they redraw to fit once the node has moved here. */
+.lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: none;
+  padding: 3vmin;
+  background: rgba(3, 5, 10, 0.72);
+  backdrop-filter: blur(14px) saturate(130%);
+  -webkit-backdrop-filter: blur(14px) saturate(130%);
+}
+.lightbox.is-open { display: block; animation: fade 0.25s var(--ease); }
+.lightbox-panel {
+  position: relative;
+  display: flex; flex-direction: column;
+  width: 100%; height: 100%;
+  padding: 20px 22px 14px;
+  border-radius: var(--radius-xl);
+  background: linear-gradient(160deg, rgba(20, 26, 40, 0.97), rgba(8, 11, 18, 0.97));
+  border: 1px solid var(--border-strong);
+  box-shadow: var(--shadow-hover), 0 0 0 1px rgba(246, 185, 75, 0.08);
+  animation: rise 0.3s var(--ease);
+}
+.lightbox-head {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  gap: 16px;
+  flex: 0 0 auto;
+  margin-bottom: 6px;
+}
+.lightbox-head h2 { margin: 0; font-size: 15px; letter-spacing: -0.01em; }
+.lightbox-head .card-sub { margin: 4px 0 0; }
+.lightbox-close {
+  flex: 0 0 auto;
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 30px; height: 30px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: rgba(255,255,255,0.04);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.25s var(--ease);
+}
+.lightbox-close:hover {
+  color: var(--text);
+  border-color: var(--border-strong);
+  background: rgba(255,255,255,0.08);
+  transform: rotate(90deg);
+}
+/* the chart fills the panel and drops its fixed card height */
+.lightbox-panel .chart { flex: 1 1 auto; height: auto; min-height: 0; }
+/* inside the lightbox the panel's own ✕ is the exit — no second button */
+.lightbox .chart-expand { display: none; }
+body.is-lightbox { overflow: hidden; }
+@keyframes fade { from { opacity: 0; } to { opacity: 1; } }
 
 /* ---------- motion ---------------------------------------------------------- */
 @keyframes rise {

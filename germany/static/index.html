@@ -38,7 +38,7 @@
         <div class="card-head">
           <div>
             <h2>Yield Curve — Snapshot</h2>
-            <p class="card-sub">Today's curve vs one year ago · dots are real anchor rates</p>
+            <p class="card-sub">Bundesbank Svensson term structure, 0.5–30Y — every tenor real · dots are observed bond yields</p>
           </div>
         </div>
         <div class="chart chart-tall" id="curveSnapshot"></div>
@@ -67,8 +67,8 @@
       <div class="card">
         <div class="card-head">
           <div>
-            <h2>Bund Yields — 2Y / 5Y / 10Y</h2>
-            <p class="card-sub">The German sovereign curve through the rate cycle</p>
+            <h2>Bund Term Structure — 6M → 30Y</h2>
+            <p class="card-sub">All 31 fitted tenors through the cycle · colour ramps short (cool) to long (warm)</p>
           </div>
         </div>
         <div class="chart chart-tall" id="bundYields"></div>
@@ -108,14 +108,33 @@
 
     <footer>
       <div>
-        Data from Bundesbank (BBSSY) &amp; ECB Data Portal (SDW), warehoused point-in-time and served by FastAPI.
-        Intermediate yield-curve tenors are interpolated from real anchors. Indicative only — not investment advice.
+        Data from Bundesbank (BBSSY &amp; BBSIS) &amp; ECB Data Portal (SDW), warehoused point-in-time and served by FastAPI.
+        The yield curve is the Bundesbank Svensson term structure, real at every tenor — nothing interpolated.
+        Indicative only — not investment advice.
       </div>
       <div>FX Macro Platform · <span id="footBuild">—</span></div>
     </footer>
   </div>
 
   <div class="tooltip" id="tooltip" role="tooltip"></div>
+
+  <div class="lightbox" id="lightbox" aria-hidden="true">
+    <div class="lightbox-panel" id="lightboxPanel" role="dialog" aria-modal="true" aria-labelledby="lightboxTitle">
+      <div class="lightbox-head">
+        <div>
+          <h2 id="lightboxTitle">—</h2>
+          <p class="card-sub" id="lightboxSub"></p>
+        </div>
+        <button class="lightbox-close" id="lightboxClose" type="button" aria-label="Close full view" title="Close (Esc)">
+          <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor"
+               stroke-width="1.6" stroke-linecap="round">
+            <line x1="3.5" y1="3.5" x2="12.5" y2="12.5" />
+            <line x1="12.5" y1="3.5" x2="3.5" y2="12.5" />
+          </svg>
+        </button>
+      </div>
+    </div>
+  </div>
 
   <script src="vendor/d3.v7.min.js"></script>
   <script src="bg-gradient.js"></script>

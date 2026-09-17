@@ -12,12 +12,14 @@ to reason about the underlying (bitemporal) warehouse schema:
   GET /api/indicators              curated series catalogue
   GET /api/observations/{id}       one series, optional resample (D/W/M/Q/Y)
   GET /api/snapshot                headline KPI cards (value + deltas + sparkline)
-  GET /api/yield-curve             Bund curve surface (anchors interpolated
-                                   across tenors, monthly grid) + snapshot curve
+  GET /api/yield-curve             Bund curve, real tenors 0.5y..30y (Bundesbank
+                                   BBSIS term structure) + snapshot curve
 
-Yield-curve anchors are real market rates: ECB deposit facility (O/N), ECB MRO
-(1W) and Bundesbank Bund yields at 2Y / 5Y / 10Y. Intermediate tenors are a
-monotone (PCHIP) interpolation — standard curve practice, and labelled as such.
+The Bund curve is real data at every tenor: the Bundesbank BBSIS Svensson term
+structure, one series per residual maturity (0.5y, then 1..30y), daily from
+2000. Nothing on that card is interpolated. The observed yields of the actual
+on-the-run bonds (Bundesbank BBSSY: 2y/5y/10y) ride along as dots, so the fitted
+curve and the traded bonds can be compared rather than blended.
 """
 from __future__ import annotations
 
@@ -48,27 +50,23 @@ app = FastAPI(title="German Macro Dashboard", version="1.0.0")
 # Curated catalogue
 # ---------------------------------------------------------------------------
 
-# Yield-curve anchors (real rates). maturity is in years.
-CURVE_ANCHORS: list[dict] = [
-    {"series_id": "ECBDFR", "label": "O/N", "maturity": 1 / 365, "kind": "anchor"},
-    {"series_id": "ECB_MRO", "label": "1W", "maturity": 7 / 365, "kind": "anchor"},
-    {"series_id": "DE2Y", "label": "2Y", "maturity": 2.0, "kind": "anchor"},
-    {"series_id": "DE5Y", "label": "5Y", "maturity": 5.0, "kind": "anchor"},
-    {"series_id": "DE10Y", "label": "10Y", "maturity": 10.0, "kind": "anchor"},
-]
+# The Bund curve is real data at every tenor: the Bundesbank BBSIS Svensson term
+# structure, one series per residual maturity — a 0.5y bucket then 1..30y. The
+# series ids mirror `ingest.config.BUND_TERM_STRUCTURE`, which mints the same
+# labels; nothing here is interpolated any more.
+CURVE_TENORS: list[dict] = (
+    [{"label": "6M", "maturity": 0.5, "series_id": "DE_TS_6M"}]
+    + [{"label": f"{m}Y", "maturity": float(m), "series_id": f"DE_TS_{m}Y"}
+       for m in range(1, 31)]
+)
 
-# Display tenors: a smooth grid interpolated between the anchors above.
-CURVE_TENORS: list[dict] = [
-    {"label": "1M", "maturity": 1 / 12},
-    {"label": "3M", "maturity": 3 / 12},
-    {"label": "6M", "maturity": 6 / 12},
-    {"label": "1Y", "maturity": 1.0},
-    {"label": "2Y", "maturity": 2.0},
-    {"label": "3Y", "maturity": 3.0},
-    {"label": "4Y", "maturity": 4.0},
-    {"label": "5Y", "maturity": 5.0},
-    {"label": "7Y", "maturity": 7.0},
-    {"label": "10Y", "maturity": 10.0},
+# Observed yields of the actual on-the-run bonds (Bundesbank BBSSY) — a
+# different measure from the fitted curve above, drawn as dots so the two can be
+# compared rather than blended.
+CURVE_ANCHORS: list[dict] = [
+    {"series_id": "DE2Y", "label": "2Y", "maturity": 2.0, "kind": "observed"},
+    {"series_id": "DE5Y", "label": "5Y", "maturity": 5.0, "kind": "observed"},
+    {"series_id": "DE10Y", "label": "10Y", "maturity": 10.0, "kind": "observed"},
 ]
 
 # The ECB policy corridor: deposit facility (floor) · main refinancing (mid) ·
@@ -150,6 +148,12 @@ INDICATORS: list[dict] = [
      "frequency": "D", "country": "US", "category": "fx"},
     {"series_id": "PNGASEUUSDM", "title": "EU Natural Gas (TTF proxy)", "unit": "USD/mmBtu",
      "frequency": "M", "country": "US", "category": "commodity"},
+] + [
+    # the curve family the snapshot card reads — generated from CURVE_TENORS so
+    # the catalogue can never drift from the chart
+    {"series_id": t["series_id"], "title": f"German Bund Term Structure {t['label']}",
+     "unit": "percent", "frequency": "D", "country": "DE", "category": "yield"}
+    for t in CURVE_TENORS
 ]
 
 
@@ -248,55 +252,7 @@ def _corridor(conn, step: str | None = None, start: date | None = None) -> list[
     return legs
 
 
-# --- PCHIP (monotone cubic Hermite) interpolation ---------------------------
-def _pchip_slopes(xs: list[float], ys: list[float]) -> list[float]:
-    n = len(xs)
-    h = [xs[i + 1] - xs[i] for i in range(n - 1)]
-    d = [(ys[i + 1] - ys[i]) / h[i] for i in range(n - 1)]
-    m = [0.0] * n
-
-    def endpoint(h0, h1, d0, d1):
-        mm = ((2 * h0 + h1) * d0 - h0 * d1) / (h0 + h1)
-        if mm * d0 < 0:
-            mm = 0.0
-        elif d0 * d1 < 0 and abs(mm) > 3 * abs(d0):
-            mm = 3 * d0
-        return mm
-
-    for i in range(1, n - 1):
-        if d[i - 1] * d[i] <= 0:
-            m[i] = 0.0
-        else:
-            w1 = 2 * h[i] + h[i - 1]
-            w2 = h[i] + 2 * h[i - 1]
-            m[i] = (w1 + w2) / (w1 / d[i - 1] + w2 / d[i])
-
-    m[0] = endpoint(h[0], h[1], d[0], d[1])
-    m[-1] = endpoint(h[-1], h[-2], d[-1], d[-2])
-    return m
-
-
-def _pchip_eval(xs: list[float], ys: list[float], m: list[float], xq: float) -> float:
-    i = bisect.bisect_right(xs, xq) - 1
-    if i < 0:
-        i = 0
-    if i >= len(xs) - 1:
-        i = len(xs) - 2
-    h = xs[i + 1] - xs[i]
-    t = (xq - xs[i]) / h
-    h00 = 2 * t ** 3 - 3 * t ** 2 + 1
-    h10 = t ** 3 - 2 * t ** 2 + t
-    h01 = -2 * t ** 3 + 3 * t ** 2
-    h11 = t ** 3 - t ** 2
-    return h00 * ys[i] + h10 * h * m[i] + h01 * ys[i + 1] + h11 * h * m[i + 1]
-
-
-def _interp_tenors(anchor_vals: list[float]) -> list[float]:
-    ax = [a["maturity"] for a in CURVE_ANCHORS]
-    m = _pchip_slopes(ax, anchor_vals)
-    return [round(_pchip_eval(ax, anchor_vals, m, t["maturity"]), 4) for t in CURVE_TENORS]
-
-
+# --- calendar helpers --------------------------------------------------------
 def _month_ends(start: date, end: date) -> list[date]:
     out: list[date] = []
     y, mth = start.year, start.month
@@ -310,11 +266,6 @@ def _month_ends(start: date, end: date) -> list[date]:
             out.append(d)
         y, mth = (y + 1, 1) if mth == 12 else (y, mth + 1)
     return out
-
-
-def _nearest_index(dates: list[date], target: date) -> int:
-    i = bisect.bisect_right(dates, target) - 1
-    return max(0, min(len(dates) - 1, i))
 
 
 # ---------------------------------------------------------------------------
@@ -484,52 +435,66 @@ def yield_curve(
     start: date | None = Query(None),
     end: date | None = Query(None),
 ) -> dict:
+    """The Bund curve, read straight off the BBSIS term structure.
+
+    Every tenor is a real observation, so there is no interpolation anywhere in
+    this route: `latest` is the curve as of the newest date any tenor carries,
+    and the one-year-ago curve is the same 31 tenors a year earlier. The monthly
+    `surface` is the same data on month-ends (forward-filled), kept for the API
+    contract. `latest_anchors` are the observed BBSSY bond yields — a different
+    measure from the fitted curve, shipped for comparison.
+    """
     with _connect() as conn:
-        anchor_series: dict[str, list[tuple[date, float]]] = {}
-        for a in CURVE_ANCHORS:
-            anchor_series[a["series_id"]] = _fetch_observations(conn, a["series_id"], None, None)
+        tenor_series: dict[str, list[tuple[date, float]]] = {
+            t["series_id"]: _fetch_observations(conn, t["series_id"], None, None)
+            for t in CURVE_TENORS
+        }
+        anchor_series: dict[str, list[tuple[date, float]]] = {
+            a["series_id"]: _fetch_observations(conn, a["series_id"], None, None)
+            for a in CURVE_ANCHORS
+        }
 
-        # latest date across anchors — step series (MRO/MLF) are forward-filled
-        # past their last change, so take the max (Bund yields / DFR are daily).
-        common_last = max((s[-1][0] for s in anchor_series.values() if s), default=None)
+    common_last = max((s[-1][0] for s in tenor_series.values() if s), default=None)
+    if common_last is None:
+        raise HTTPException(status_code=503, detail="no term-structure observations in the warehouse")
+    first_common = max((s[0][0] for s in tenor_series.values() if s), default=None)
 
-    # --- monthly surface grid ------------------------------------------------
-    first_common = max((s[0][0] for s in anchor_series.values() if s), default=None)
-    grid_start = start or first_common
-    grid_end = end or (common_last or date.today())
-    grid_dates = _month_ends(grid_start, grid_end)
-    # only keep grid dates where every anchor already has an observation
-    grid_dates = [d for d in grid_dates if all(s and s[0][0] <= d for s in anchor_series.values())]
-    # close the surface at the latest observation so the last column == as_of
-    if common_last and (not grid_dates or common_last > grid_dates[-1]):
-        grid_dates.append(common_last)
-
-    # per-anchor: sorted (date,value) with last-value lookup (ffill semantics)
-    def anchor_value(sid: str, d: date) -> float:
-        pts = anchor_series[sid]
+    # last value at or before `d` (policy/curve series hold between prints)
+    def value_at(sid: str, d: date) -> float | None:
+        pts = tenor_series.get(sid) or []
         i = bisect.bisect_right([p[0] for p in pts], d) - 1
-        return pts[i][1]
+        return pts[i][1] if i >= 0 else None
 
-    surface: list[list[float]] = []
-    for d in grid_dates:
-        vals = [anchor_value(a["series_id"], d) for a in CURVE_ANCHORS]
-        surface.append(_interp_tenors(vals))
+    def observed_at(sid: str, d: date) -> float | None:
+        pts = anchor_series.get(sid) or []
+        i = bisect.bisect_right([p[0] for p in pts], d) - 1
+        return pts[i][1] if i >= 0 else None
 
-    # --- snapshot curves: latest vs one year ago -----------------------------
     def curve_at(d: date) -> list[dict]:
-        vals = [anchor_value(a["series_id"], d) for a in CURVE_ANCHORS]
-        ys = _interp_tenors(vals)
-        return [{"label": t["label"], "maturity": t["maturity"], "value": ys[i]}
-                for i, t in enumerate(CURVE_TENORS)]
+        return [{"label": t["label"], "maturity": t["maturity"],
+                 "series_id": t["series_id"], "value": value_at(t["series_id"], d)}
+                for t in CURVE_TENORS]
 
     latest_curve = curve_at(common_last)
-    one_year_ago_date = grid_dates[_nearest_index(grid_dates, common_last - timedelta(days=365))]
+    one_year_ago_date = common_last - timedelta(days=365)
     one_year_ago_curve = curve_at(one_year_ago_date)
 
-    # anchor points on the snapshot curve (real rates, not interpolated)
-    latest_anchors = [{"label": a["label"], "maturity": a["maturity"],
-                       "value": anchor_value(a["series_id"], common_last)}
-                      for a in CURVE_ANCHORS]
+    # --- monthly surface grid (real tenors, forward-filled) ------------------
+    grid_start = start or first_common or one_year_ago_date
+    grid_end = end or common_last
+    grid_dates = [d for d in _month_ends(grid_start, grid_end) if d >= (first_common or grid_start)]
+    if not grid_dates or common_last > grid_dates[-1]:
+        grid_dates.append(common_last)
+
+    surface: list[list[float | None]] = [
+        [value_at(t["series_id"], d) for t in CURVE_TENORS] for d in grid_dates
+    ]
+
+    latest_anchors = [
+        {"label": a["label"], "maturity": a["maturity"],
+         "value": observed_at(a["series_id"], common_last)}
+        for a in CURVE_ANCHORS
+    ]
 
     return {
         "as_of": common_last.isoformat(),
@@ -541,7 +506,9 @@ def yield_curve(
         "latest": latest_curve,
         "latest_anchors": latest_anchors,
         "one_year_ago_curve": one_year_ago_curve,
-        "meta": {"tenor_count": len(CURVE_TENORS), "date_count": len(grid_dates)},
+        "source": "Bundesbank BBSIS (Svensson term structure, daily)",
+        "meta": {"tenor_count": len(CURVE_TENORS), "date_count": len(grid_dates),
+                 "interpolated_tenors": 0},
     }
 
 
