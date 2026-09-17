@@ -101,3 +101,38 @@ infra, ingest, dbt, or the API. The authoritative spec is
     schema `elementary`). `edr report --project-dir dbt --profiles-dir dbt
     --file-path ...` writes a self-contained HTML; serve it statically (see
     `scripts/elementary_serve.sh` + the `elementary-report` compose service).
+20. **A partial `dbt build --select` fails Elementary's `on-run-end` hook.**
+    `elementary.upload_dbt_artifacts()` raises `'get_upload_artifact_method' is
+    undefined` whenever the selection's graph contains **no elementary node** —
+    the models all pass, then the command exits non-zero. Selecting
+    `package:elementary` alongside the real models is enough to make it compile
+    (`--no-partial-parse` does **not** help, and `operation` is not a valid
+    `--resource-type`). This is what `orchestration/ops.py` does for the
+    single-series refresh.
+21. **`dbt build --select <typo>` exits 0 having transformed nothing.** An empty
+    selection is not an error to dbt, so a refresh can report SUCCESS while the
+    marts keep stale data. `orchestration/ops.py::_assert_selection_matches`
+    pre-flights the selector with dbt's in-process `dbtRunner` and raises. In
+    dbt selectors a tag needs the `tag:` prefix (`tag:ops_refresh_fred+`, not
+    `ops_refresh_fred+`), and `dbtRunner.invoke` needs explicit `--project-dir`
+    / `--profiles-dir` (it defaults to `~/.dbt`).
+22. **Dagster jobs that wrap ops need bare annotations.** Gotcha #11 applies to
+    plain `@op`/`@job` modules too: with `from __future__ import annotations`,
+    Dagster rejects `context: OpExecutionContext` ("Cannot annotate `context`
+    parameter ... must be annotated with ... or left blank") because the
+    annotation is a string. Also, a Dagster `Config` subclass is **not** accepted
+    as `config_schema=` in this stack (Pydantic-vs-Dagster resolution) — use the
+    classic `config_schema={"series_id": Field(String)}` + `context.op_config`.
+23. **Dagster 1.13 `RunsFilter` has no `jobNames`** (only a single
+    `pipelineName`), and `Run.startTime`/`endTime` are epoch **seconds**, not
+    milliseconds (older releases used millis). `api/dagster_client.py` filters
+    jobs client-side and sniffs the epoch magnitude — otherwise run timestamps
+    render as 1970.
+24. **`docker compose build` can serve a stale `COPY . .` layer.** After editing
+    container code, if the image keeps running the *old* module, rebuild with
+    `docker compose build --no-cache <service>` and
+    `docker compose up -d --no-deps --force-recreate <service>`. Verify with
+    `docker exec <c> grep <new-symbol> <path>` rather than trusting the build.
+    A transient `error getting credentials ... Module Directory Service error`
+    from buildkit is the macOS credential helper, not a broken image — retry.
+

@@ -36,7 +36,7 @@ make up                       # builds the image and starts all 5 services
 | Launchpad | <http://127.0.0.1:8080> | dev navigation hub → all services below |
 | Dagster UI | <http://127.0.0.1:3000> | asset graph, runs, schedule |
 | API (OpenAPI) | <http://127.0.0.1:8000/docs> | `/v1/*` endpoints |
-| Dashboard | <http://127.0.0.1:8501> | Streamlit forecasting studio (auto-ARIMA / ETS, walk-forward CV, diagnostics) |
+| Dashboard | <http://127.0.0.1:8501> | Streamlit suite: Forecast Studio, Signal Lab, Volatility Studio, Data Ops (selective refresh) |
 | Metabase | <http://127.0.0.1:3001> | add warehouse: host `postgres`, db `warehouse`, user `platform_reader` |
 | Elementary | <http://127.0.0.1:8081> | data-quality report (regenerates every 30 min) |
 | dbt deps | <http://127.0.0.1:8082> | `dbt deps` install report (regenerates every 5 min) |
@@ -76,6 +76,15 @@ All endpoints return the `{data, meta}` envelope:
 - `GET /v1/observations?series_ids=a,b,c&from=&to=&as_of=`
 - `GET /v1/meta/freshness` — last observation and last known date per series
 
+Owner-only trigger router (separate prefix, `X-Ops-Key` header, spec §10):
+
+- `GET  /ops/health` — API → Dagster reachability
+- `GET  /ops/series` — catalog + warehouse freshness for the Data Ops page
+- `POST /ops/refresh/{series_id}` — queue a single-series refresh (ingest + dbt)
+- `POST /ops/refresh-all` — queue the full ingest + dbt pipeline
+- `GET  /ops/runs/{run_id}` — run status + step event log (poll target)
+- `POST /ops/runs/{run_id}/terminate` — cancel a run
+
 The API connects as `platform_reader` and reads `marts`/`meta` only.
 
 ## Data sources
@@ -94,7 +103,7 @@ Upstream endpoints and response shapes are documented in
 ingest/     fetch clients -> Postgres raw.source_fetch (spec §5)
 dbt/        staging -> intermediate -> marts (Postgres), series_catalog seed
 api/        FastAPI read layer over marts (platform_reader)
-dashboard/  Streamlit forecasting studio + Signal Lab (separate image, reads marts as platform_reader)
+dashboard/  Streamlit suite — Forecast Studio, Signal Lab, Volatility Studio, Data Ops (separate image, reads marts as platform_reader)
 sql/        001_init.sh — roles, databases, schemas, raw landing table
 agents/     environment facts + gotchas for agentic builds
 docs/       api-calls.md · migration-plan.md
@@ -162,3 +171,64 @@ series in the time *and* frequency domains:
   drawdown, per-year ridge plots and by-cycle violins;
 - multi-series correlation maps — level & %-change matrices, rolling
   correlations and lead-lag cross-correlograms against up to 6 companions.
+
+### Volatility Studio (multipage)
+
+A third page (`pages/2_🌊_Volatility_Studio.py`, analytics in `volatility.py`)
+runs the reference pipeline from [`volatility_pipeline.py`](volatility_pipeline.py)
+on any selected series and returns a **distribution, not a direction**:
+
+- returns — log returns when the level is strictly positive, simple returns
+  otherwise (yields, spreads and policy rates can go negative);
+- σ estimators — zero-mean rolling close-to-close (20/60 period), sample-sd
+  rolling, RiskMetrics EWMA, and the GARCH conditional path, all annualised
+  from the observed observation rate (≈252 for business-daily, 12 monthly, …);
+- range estimators — Parkinson / Garman-Klass / Yang-Zhang, enabled only when
+  true OHLC bars exist. The warehouse is close-only, so they are reported as
+  unavailable unless "synthesise bars" is switched on (explicitly a proxy);
+- diagnostics — ACF of returns vs. squared returns, Ljung-Box, ARCH-LM(10),
+  Jarque-Bera, excess kurtosis, and QQ plots of returns and standardised
+  residuals against normal and t(ν);
+- fit — BIC race over GARCH(1,1)-normal / -t, GJR-t and GJR-skew-t, then
+  persistence, σ∞, half-life and σ today (with the weak-identification warning);
+- horizon — the mean-reverting variance aggregation Σ E[h_{t+h}] vs. naive √T,
+  the volatility term structure, an optional scheduled-event variance uplift
+  (σ_event from E|x| = σ√(2/π)), and the drift scale-mismatch check;
+- distribution — simulated terminal returns and percentiles, P(±10%),
+  path-dependent touch probabilities, and a naive-lognormal straw man;
+- validation — walk-forward backtest over **disjoint** windows (step == H)
+  scoring three interval methods (simulated t, variance + normal quantiles,
+  naive flat √T) with PIT histogram, coverage bars and Kupiec/Christoffersen
+  p-values.
+
+The pipeline is close-only-safe and frequency-agnostic; the `arch` package was
+added to `dashboard/requirements.txt` for it. Reference presentation (not
+copied): `volatility-report.html`.
+
+### Data Ops (multipage) — interactive, selective refresh
+
+A fourth page (`pages/3_🔄_Data_Ops.py`) pulls the **newest version of a chosen
+series** on demand and rebuilds its transform, or triggers the whole pipeline:
+
+- freshness table across all 79 configured series (last observation, age, count),
+  filterable by source/frequency and flagging anything older than 7 days;
+- **Refresh this series** → `POST /ops/refresh/{series_id}`, which queues a
+  Dagster run of `refresh_series_job`: fetch that one series into
+  `raw.source_fetch`, then run the dedicated dbt transform
+  (`tag:ops_refresh_<source>+` — staging → intermediate → marts) so the fresh
+  rows are visible to the API, Metabase and the other pages;
+- **Trigger full pipeline** → `full_refresh_job`: every source ingest + the full
+  dbt build, regardless of the 06:00 schedule;
+- **Refresh all stale** → sequential single-series runs (one Dagster run each, so
+  one failure does not abort the rest);
+- live run progress (status, step counts, elapsed, step event log, link into the
+  Dagster UI) and a recent-runs history.
+
+Triggering goes through the owner-only API router (`api/ops.py`, spec §10): a
+separate `/ops` prefix behind an `X-Ops-Key` header, never mounted under `/v1`.
+The API never writes warehouse data — it queues a Dagster run
+(`api/dagster_client.py` → GraphQL) and reports it, so Dagster stays the single
+orchestrator. Set `OPS_API_KEY` in `.env` (see `.env.example`); if it is unset the
+API refuses every trigger rather than opening up.
+
+
