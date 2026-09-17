@@ -36,3 +36,15 @@ reports/
 
 # Elementary edr CLI logs/intermediates
 edr_target/
+
+# Raw research scratch (fetched source documents, intermediate extracts).
+# Keep the distilled deliverables in docs/research/; ignore this cache.
+docs/research/sourcing/scratch/
+docs/research/tax-deep-dives/jp_tax_research/
+
+# Research: keep the distilled markdown deliverables, ignore the raw fetch cache
+# (downloaded PDFs/HTML/XLSX source documents - reproducible, ~70 MB).
+docs/research/**/*.pdf
+docs/research/**/*.html
+docs/research/**/*.txt
+docs/research/**/*.xlsx

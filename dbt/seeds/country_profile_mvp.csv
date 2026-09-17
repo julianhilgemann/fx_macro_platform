@@ -1,0 +1,20 @@
+country_iso3,country_name,latitude,longitude,currency,currency_eur_peg,wedge_mid,wedge_high,cap_tax,exit_tax_flag,exit_tax_threshold_eur,price_level,child_cost_pct,english_ok,quality_of_life,climate_risk,confidence,source_tax,source_price,verified_by
+DEU,Germany,52.5235,13.4115,EUR,1.000,0.456,0.458,0.26375,1,500000,1.000,0.100,0,68,22,high,tax-regime-matrix-2025-2026.md,WB PA.NUS.PPP/FCRF 2024,agent+human
+CHE,Switzerland,46.948,7.44821,CHF,1.062,0.258,0.288,0.130,0,0,1.620,0.400,1,86,18,high,tax-regime-matrix-2025-2026.md,WB PA.NUS.PPP/FCRF 2024,agent+human
+AUT,Austria,48.2201,16.3798,EUR,1.000,0.470,0.480,0.275,0,0,1.030,0.120,1,74,22,high,tax-regime-matrix-2025-2026.md,WB PA.NUS.PPP/FCRF 2024,agent
+NLD,Netherlands,52.3738,4.89095,EUR,1.000,0.420,0.495,0.360,0,0,1.150,0.240,1,75,24,high,tax-regime-matrix-2025-2026.md,WB PA.NUS.PPP/FCRF 2024,agent
+BEL,Belgium,50.8371,4.36761,EUR,1.000,0.520,0.550,0.300,0,0,1.090,0.140,1,71,22,medium,estimate,WB PA.NUS.PPP/FCRF 2024,human
+LUX,Luxembourg,49.61,6.1296,EUR,1.000,0.400,0.440,0.210,0,0,1.250,0.090,1,73,20,medium,estimate,WB PA.NUS.PPP/FCRF 2024,human
+IRL,Ireland,53.3441,-6.26749,EUR,1.000,0.480,0.520,0.330,0,0,1.280,0.260,1,72,20,high,tax-regime-matrix-2025-2026.md,WB PA.NUS.PPP/FCRF 2024,agent
+GBR,United Kingdom,51.5002,-0.126236,GBP,1.170,0.400,0.470,0.240,0,0,1.100,0.230,1,70,22,high,tax-regime-matrix-2025-2026.md,WB PA.NUS.PPP/FCRF 2024,agent
+FRA,France,48.8566,2.35097,EUR,1.000,0.500,0.550,0.314,1,800000,1.050,0.140,0,72,24,high,tax-regime-matrix-2025-2026.md,WB PA.NUS.PPP/FCRF 2024,agent
+SWE,Sweden,59.3327,18.0645,SEK,0.088,0.450,0.520,0.300,0,0,1.080,0.110,1,78,16,medium,estimate,WB PA.NUS.PPP/FCRF 2024,human
+NOR,Norway,59.9138,10.7387,NOK,0.086,0.400,0.470,0.220,1,260000,1.320,0.150,1,82,16,high,tax-regime-matrix-2025-2026.md,WB PA.NUS.PPP/FCRF 2024,agent
+DNK,Denmark,55.6763,12.5681,DKK,0.134,0.480,0.550,0.420,0,0,1.220,0.120,1,80,18,medium,estimate,WB PA.NUS.PPP/FCRF 2024,human
+FIN,Finland,60.1608,24.9525,EUR,1.000,0.450,0.520,0.340,0,0,1.100,0.120,1,79,17,medium,estimate,WB PA.NUS.PPP/FCRF 2024,human
+ISL,Iceland,64.1353,-21.8952,ISK,0.0067,0.380,0.440,0.220,0,0,1.500,0.120,1,76,19,low,estimate,WB PA.NUS.PPP/FCRF 2024,human
+ITA,Italy,41.8955,12.4823,EUR,1.000,0.440,0.470,0.260,0,0,0.950,0.120,0,66,28,high,tax-regime-matrix-2025-2026.md,WB PA.NUS.PPP/FCRF 2024,agent
+ESP,Spain,40.4167,-3.70327,EUR,1.000,0.390,0.470,0.210,0,0,0.850,0.110,0,69,30,high,tax-regime-matrix-2025-2026.md,WB PA.NUS.PPP/FCRF 2024,agent
+PRT,Portugal,38.7072,-9.13552,EUR,1.000,0.420,0.480,0.280,0,0,0.780,0.100,0,67,28,high,tax-regime-matrix-2025-2026.md,WB PA.NUS.PPP/FCRF 2024,agent
+CZE,Czechia,50.0878,14.4205,CZK,0.040,0.410,0.430,0.000,0,0,0.720,0.120,0,65,24,high,tax-regime-matrix-2025-2026.md,WB PA.NUS.PPP/FCRF 2024,agent
+POL,Poland,52.26,21.02,PLN,0.233,0.380,0.420,0.190,1,860000,0.620,0.120,0,62,26,high,tax-regime-matrix-2025-2026.md,WB PA.NUS.PPP/FCRF 2024,agent

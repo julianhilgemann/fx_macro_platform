@@ -18,3 +18,26 @@ seeds:
           - accepted_values:
               arguments:
                 values: ['D', 'W', 'M', 'Q', 'A']
+
+  - name: country_profile_mvp
+    description: >
+      Hand-curated country profile for the liveability MVP (19 OECD-core countries).
+      Every numeric field is a model input with a stated source class; `confidence`
+      marks how well each row is evidenced and `verified_by` whether a human checked it.
+      See docs/liveability-mvp.md and docs/research/tax-regime-matrix-2025-2026.md.
+    config:
+      column_types:
+        exit_tax_flag: boolean
+        english_ok: boolean
+    columns:
+      - name: country_iso3
+        description: "ISO 3166-1 alpha-3 country code."
+        tests: [unique, not_null]
+      - name: price_level
+        description: "Cost-of-living index vs Germany (WB PA.NUS.PPP / PA.NUS.FCRF)."
+        tests: [not_null]
+      - name: confidence
+        tests:
+          - accepted_values:
+              arguments:
+                values: ['high', 'medium', 'low']

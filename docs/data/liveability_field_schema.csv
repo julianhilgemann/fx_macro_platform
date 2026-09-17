@@ -1,0 +1,60 @@
+field_id,tier,block,unit,direction,source,source_access,licence,licence_tier,refresh,derived_from,indicator_code,notes
+iso3,0,backbone,code,-,ISO 3166-1 alpha-3,static,public,open,static,,,join key across every block
+year,0,backbone,year,-,calendar,static,public,open,static,,,reference year for the cross-section
+gdp_pc_ppp,0,macro,current intl dollar,up,World Bank WDI,REST API no key,CC BY 4.0,open,annual,,NY.GDP.PCAP.PP.CD,rough proxy for market depth and wage ceiling
+ppp_conv_factor,0,macro,LCU per intl dollar,-,World Bank WDI,REST api.worldbank.org/v2,CC BY 4.0,open,annual,,PA.NUS.PRVT.PP,kappa = PA.NUS.PPP / PA.NUS.FCRF gives a free price-level index. PA.NUS.PPPC.RF is 404 - do not use
+gross_cap_income_return,0,finance,percent p.a.,up,JST Macrohistory R6,xlsx/stata bulk,CC BY-NC-SA - research only,blocked_commercial,irregular,,,R6 = 18 countries 1870-2020 incl. housing_tr. NO rgdppc (use rgdpmad); NO mortg (use tmort)
+cap_income_tax_effective,0,tax,percent,down,OECD Tax Database + national law,portal + hand-curated,public,open,annual,,,effective rate on the USER'S asset mix not the headline top rate
+gov_debt_gdp,0,macro,percent of GDP,down,World Bank WDI / IMF WEO,REST API,CC BY 4.0,open,annual,,GC.DOD.TOTL.GD.ZS,fiscal capacity input
+old_age_dependency_2050,0,demography,ratio,down,UN WPP 2024,API + bulk CSV,CC BY 3.0 IGO,open,per revision,,,aging pressure on the social system
+median_age,0,demography,years,-,UN WPP 2024,API + bulk CSV,CC BY 3.0 IGO,open,per revision,,,societal age structure
+climate_risk_score,0,climate,index 0-100,down,ND-GAIN Country Index,bulk CSV,free for non-commercial,blocked_commercial,annual,,,composite vulnerability and readiness
+nature_score,0,nature,index 0-100,up,composite,derived,varies,verify,annual,,,see nature_* component fields below
+median_fixed_down_mbps,0,infrastructure,Mbit/s,up,Ookla Open Data,AWS S3 (public parquet),CC BY-NC-SA - COMMERCIAL BLOCKER,blocked_commercial,quarterly,,,verified: public S3 quarterly parquet; no free commercial substitute for measured broadband
+real_10y_yield,1,macro,percent p.a.,up,BIS + national debt agencies,API / CSV,public,open,monthly,,,nominal 10y minus breakeven inflation
+sovereign_spread,1,macro,basis points,down,market-implied proxy,FRED fredgraph.csv (no key),public per series,open,daily,,,NO free ratings feed and NO FRED EMBI series. Proxy = IRLTLT01{ISO3}M156N spread vs US + CPIA IQ.CPA.DEBT.XQ
+fx_vol_5y,1,finance,percent p.a.,down,OWN WAREHOUSE,derived,internal,verify,daily,,,reuse marts.fct_macro_series_transforms
+inflation_vol_10y,1,macro,percent,down,World Bank WDI,REST API,CC BY 4.0,open,annual,,FP.CPI.TOTL.ZG,macro stability
+terms_of_trade_trend,1,macro,index change,up,UNCTAD / World Bank,API,CC BY 4.0,open,quarterly,,,external balance trajectory
+cap_gains_rate,1,tax,percent,down,national law,hand-curated,public,open,annual,,,"listed securities, long-term resident individual. CZ exempt after 3y holding (5y corporate shares) - CZK 40m value test repealed 1 Jan 2026 by Act 360/2025; no holding-period relief in DE"
+dividend_rate,1,tax,percent,down,national law + treaties,hand-curated,public,open,annual,,,headline plus effective combined
+wealth_tax_rate,1,tax,percent p.a.,down,national law,hand-curated,public,open,annual,,,zero if none; note threshold
+inherit_tax_rate,1,tax,percent,down,national law,hand-curated,public,open,annual,,,"non-descendant beneficiary. CZ = 0 for ALL beneficiaries (ZDP s4a(1)(a), exempt since 1 Jan 2014); CH 0-50pct by canton; IE Group C EUR 20k at 33pct; JP 20pct surcharge for non-descendants"
+remittance_or_territorial,1,tax,boolean,up,national law,hand-curated,public,open,annual,,,1 if foreign-source capital is sheltered on arrival
+years_until_worldwide_taxation,1,tax,years,up,national law,hand-curated,public,open,annual,,,duration of the favourable window
+exit_tax_exposure,1,tax,boolean,down,national law,hand-curated,public,open,annual,,,"verified for all 21. No personal exit tax: GR, CZ, EE, IE*, SG, UAE, NZ, UK, CY, MT, PT*, CH. In force: PL art.30da PLN4m/19pct; DE s6 AStG + s19(3) InvStG (EUR500k per fund); ES art.95 bis (>EUR4m OR >25pct AND >EUR1m, 10 of 15y); JP >JPY100m + 5 of last 10y, 15.315pct; CA s.128.1(4) no threshold; AU CGT event I1 non-TAP only; US s.877A; NL art.4.16(1)(h)+2.8(2)+9.1; FR art.167 bis; NO NOK3m/37.84pct. *IE s.29A is a RECAPTURE ON RETURN (<=5 yrs), not a departure charge; *PT art.10-A CIRS recaptures deferred M&A/rollover gains only, plus crypto at 28pct. IT: D.Lgs.117/2026 repeals the TUIR - art.166 governs 2026, art.193 governs 2027+; art.166 is business-level only."
+migrant_regime_present,1,tax,boolean,up,national law,hand-curated,public,open,annual,,,"WARNING: PL lump-sum regime (PLN 200k/yr, 10y) is an UNRESOLVED CONFLICT in the research matrix - do not use without checking the statute. Verify every cell against primary law: this block carries the largest effect on the answer and is the most often misreported."
+migrant_regime_headline_rate,1,tax,percent,down,national law,hand-curated,public,open,annual,,,or the minimum tax floor
+migrant_regime_years,1,tax,years,up,national law,hand-curated,public,open,annual,,,duration before normal regime applies
+capital_controls_index,1,openness,index,up,Chinn-Ito,UCI download,academic free,open,annual,,,capital mobility and repatriation risk
+net_migration_rate,1,demography,per 1000,up,UN WPP 2024,API,CC BY 3.0 IGO,open,per revision,,,labour market openness and dynamism
+fertility_rate,1,demography,births per woman,-,UN WPP 2024,API,CC BY 3.0 IGO,open,per revision,,,long-run fiscal base
+pop_growth_2050,1,demography,percent,-,UN WPP 2024,API,CC BY 3.0 IGO,open,per revision,,,demand growth and pension base
+healthy_life_expectancy,1,health,years,up,WHO GHO,"ghoapi.azureedge.net OData, keyless",CC BY-NC-SA - COMMERCIAL BLOCKER,blocked_commercial,annual,,,"verified keyless OData, 194 countries; HALE + UHC + health-spend codes confirmed"
+pension_replacement_rate,1,social,percent,up,OECD Pensions at a Glance,CSV,public,open,biennial,,,what the social system actually pays
+pension_sustainability,1,social,index,up,EC Ageing Report / OECD,portal,public,open,per cycle,,,intergenerational fairness of the system
+health_spend_pc_ppp,1,social,current intl dollar,up,WHO GHED / World Bank,API,CC BY 4.0,open,annual,,SH.XPD.CHEX.PP.CD,social floor input
+out_of_pocket_share,1,social,percent,down,WHO GHED,API,CC BY-NC-SA,blocked_commercial,annual,,SH.XPD.OOPC.CH.ZS,real cost of the social system to the user
+gini,1,social,index 0-100,down,World Bank WDI / SWIID,API,CC BY 4.0,open,annual,,SI.POV.GINI,inequality and status-position input
+social_transfer_share_gdp,1,social,percent of GDP,up,IMF / OECD,API,public,open,annual,,,redistribution capacity
+heat_days_above_35c_proj_2050,1,climate,days,down,open-meteo (NOT CCKP),keyless REST,CC BY 4.0,open,daily/climate,,,WB CCKP unusable from scripts - worldbank.org returns 403 cf-mitigated:challenge
+water_stress_baseline_2030,1,climate,index 0-5,down,WRI Aqueduct 4.0,bulk download,CC BY 4.0,open,per release,,,use p90 across regions for risk-averse users
+crop_yield_change_2050,1,climate,percent,up,CCKP / FAO,API,CC BY 4.0,open,per scenario,,,food security exposure
+coastal_flood_exposure_pop,1,climate,percent of pop,down,CCKP / Aqueduct,API,CC BY 4.0,open,per scenario,,,tail risk in low-elevation zones
+pm25_ugm3,1,climate,micrograms per m3,down,WHO Ambient Air Quality,CSV,CC BY-NC-SA,blocked_commercial,annual,,,health and nature quality
+protected_area_pct,1,nature,percent,up,Protected Planet / WDPA,S3 pp-downloads-production,non-commercial,blocked_commercial,annual,,,API v3 REMOVED 1 May 2026 - migrate to v4; rebranding to WDPCA
+forest_cover_pct,1,nature,percent,up,Hansen / Global Forest Watch,API,CC BY 4.0,open,annual,,,nature_score component
+biodiversity_intactness,1,nature,index 0-1,up,Natural History Museum BII,download,academic free,open,per release,,,nature_score component
+renewable_share,1,climate,percent,up,Ember,API,CC BY 4.0,open,annual,,,energy transition exposure
+median_mobile_down_mbps,1,infrastructure,Mbit/s,up,Ookla Open Data,AWS S3,CC BY-NC,blocked_commercial,quarterly,,,connectivity component
+pct_pop_5g,1,infrastructure,percent,up,ITU DataHub,portal,public,open,annual,,,connectivity readiness
+electricity_reliability,1,infrastructure,index,up,World Bank WDI,REST API,CC BY 4.0,open,annual,,IC.ELC.OUTG.ZS,infrastructure robustness
+english_proficiency_index,1,infrastructure,index 0-800,up,EF EPI,report + tables,verify redistribution,verify,annual,,,drives the language friction term
+visa_free_count,1,openness,count,up,Henley / Passport Index,free ranking,verify redistribution,verify,quarterly,,,no free machine-readable feed verified
+migrant_regime_qualifying_test,1,tax,text,-,national law (sourced matrix),hand-curated,public,open,annual,,,"GR art.5A: EUR100k/yr for 15y (non-extendable, Law 5222/2025), FOREIGN-SOURCE income only, EUR500k investment requirement. IT art.24-bis: EUR300k from 1 Jan 2026 + EUR50k per family member, 15y contractual lock; IT art.24-ter: 7pct pensioners. PL: UNRESOLVED - see migrant_regime_present note."
+migrant_regime_min_investment,1,tax,local currency,down,national law (sourced matrix),hand-curated,public,open,annual,,,"investment requirement, NOT an exit-tax threshold: e.g. GR EUR 500,000; IT EUR 300,000 flat tax + EUR 50k per family member"
+exit_tax_rate,1,tax,percent,down,national law (sourced matrix),hand-curated,public,open,annual,,,PL 19pct (3pct if tax value unascertainable); DE marginal on FMV-cost; JP 15.315pct national only; US mark-to-market at LTCG rates
+exit_tax_threshold,1,tax,local currency or ratio,down,national law (sourced matrix),hand-curated,public,open,annual,,,"CAUTION: several ""thresholds"" are reporting or investment figures, not exit-tax triggers. CA s.128.1(9) CAD25k is a REPORTING (T1161) threshold - no wealth threshold exists; JP JPY100m is real; GR EUR500k is an INBOUND investment requirement, not an exit trigger; NO NOK3m bunnfradrag. CA excludes Canadian real property (s.128.1(4)(b)(i)) - the family home escapes the deemed disposition."
+exit_tax_deferral,1,tax,text,up,national law (sourced matrix),hand-curated,public,open,annual,,,collection vs charge distinction: PL defers COLLECTION to 2027 via ministerial regulation; DE 7 interest-free instalments s6(4) AStG; DE EU/EEA deferral abolished 2022
+exit_tax_return_waiver_years,1,tax,years,up,national law (sourced matrix),hand-curated,public,open,annual,,,"years within which return cancels or recaptures liability: DE 7 (extendable 12) s6(3) AStG; JP 5 (extendable 10); IE recapture if return within 5 yrs of assessment (s.29A TCA); CA relief if resident <=60 of prior 120 months; NO 12-yr deferral. This is what makes exit tax CONTINGENT rather than sunk - model P(return), do not assume zero."
+migrant_regime_status,1,tax,enum,up,national law (sourced matrix),hand-curated,public,open,annual,,,"open | restricted | closed | n/a. Closed: PT old NHR (1 Jan 2024), MT CBI (Jul 2025), CY CBI (Nov 2020), UK Tier-1 Investor (Feb 2022), CA Start-Up Visa (1 Jan 2026). n/a because unnecessary: DE, CA, AU, US, JP, UAE"
