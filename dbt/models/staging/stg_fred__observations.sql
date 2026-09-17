@@ -1,3 +1,6 @@
+-- On-demand refresh tag: a single-series refresh of a fred series selects this
+-- model with its downstream graph (see orchestration/ops.py).
+{{ config(tags=['ops_refresh_fred']) }}
 -- Staging: parse the FRED fetch payload (jsonb) into typed observations.
 -- known_at = the observation's realtime_start (release/vintage date);
 -- fetched_at = provenance (when we pulled it).

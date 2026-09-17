@@ -63,12 +63,19 @@ services:
     command: uvicorn api.main:app --host 0.0.0.0 --port 8000
     depends_on:
       postgres: { condition: service_healthy }
+      # not a hard dependency (the API serves /v1 without Dagster), but the
+      # container starts after the webserver so /ops/health is useful sooner
+      dagster-webserver: { condition: service_started }
     environment:
       POSTGRES_HOST: postgres
       POSTGRES_PORT: "5432"
       POSTGRES_DB: warehouse
       PLATFORM_READER_USER: platform_reader
       PLATFORM_READER_PASSWORD: ${PLATFORM_READER_PASSWORD:-reader_dev}
+      # Owner-only trigger router (/ops): shared key for the refresh UI, and the
+      # Dagster webserver whose GraphQL API queues the runs.
+      OPS_API_KEY: ${OPS_API_KEY:-ops_dev_key}
+      DAGSTER_URL: http://dagster-webserver:3000
     ports: ["8000:8000"]
 
   dashboard:
@@ -82,7 +89,11 @@ services:
       POSTGRES_DB: warehouse
       PLATFORM_READER_USER: platform_reader
       PLATFORM_READER_PASSWORD: ${PLATFORM_READER_PASSWORD:-reader_dev}
-    ports: ["8501:8501"]   # Streamlit forecasting studio
+      # Data Ops page: it triggers refreshes through the owner-only API router.
+      API_BASE_URL: http://api:8000
+      OPS_API_KEY: ${OPS_API_KEY:-ops_dev_key}
+      DAGSTER_UI_URL: http://127.0.0.1:3000
+    ports: ["8501:8501"]   # Streamlit suite
     restart: unless-stopped
 
   germany-dashboard:

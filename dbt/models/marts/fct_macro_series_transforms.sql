@@ -1,3 +1,5 @@
+-- Rebuilt by the single-series refresh path (tag:ops_refresh).
+{{ config(tags=['ops_refresh']) }}
 -- Long-format transforms mart: one row per
 -- (series_id, grain, period_date, transform).
 --

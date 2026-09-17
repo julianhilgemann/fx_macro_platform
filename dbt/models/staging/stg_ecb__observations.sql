@@ -1,3 +1,6 @@
+-- On-demand refresh tag: a single-series refresh of a ecb series selects this
+-- model with its downstream graph (see orchestration/ops.py).
+{{ config(tags=['ops_refresh_ecb']) }}
 -- Staging: parse the ECB SDW fetch payload (normalized jsonb) into observations.
 -- ECB exposes no vintage; known_at = fetched_at::date (approximate revision history).
 with src as (

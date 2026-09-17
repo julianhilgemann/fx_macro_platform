@@ -1,3 +1,6 @@
+-- On-demand refresh tag: a single-series refresh of a bundesbank series selects this
+-- model with its downstream graph (see orchestration/ops.py).
+{{ config(tags=['ops_refresh_bundesbank']) }}
 -- Staging: parse the Bundesbank BBSSY fetch payload (normalized jsonb).
 -- Bundesbank exposes no vintage; known_at = fetched_at::date.
 with src as (

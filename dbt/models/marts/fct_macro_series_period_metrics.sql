@@ -1,3 +1,5 @@
+-- Rebuilt by the single-series refresh path (tag:ops_refresh).
+{{ config(tags=['ops_refresh']) }}
 -- Wide period-metrics mart: one row per (series_id, grain, period_date) with
 -- the level plus period-over-period (MoM), quarter-ago (QoQ), year-ago (YoY),
 -- month-to-date and year-to-date % changes.

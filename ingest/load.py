@@ -31,6 +31,7 @@ from ingest.config import (
     SERIES,
     WRITER_PASSWORD,
     WRITER_USER,
+    series_by_id,
 )
 from ingest.fetch import FetchResult, fetch_series
 from ingest.parse import parse_bundesbank_csv, parse_ecb_sdmx_csv
@@ -82,7 +83,7 @@ def _archive(res: FetchResult, fetch_ts: datetime) -> Path:
     return path
 
 
-def _rows_for_source(source: str, fetch_ts: datetime) -> tuple[list[tuple], dict]:
+def _rows_for_source(source: str, fetch_ts: datetime, dagster_run_id: str | None = None) -> tuple[list[tuple], dict]:
     """Fetch + archive every series of `source`; return (insert rows, stats)."""
     rows: list[tuple] = []
     ok = failed = 0
@@ -96,7 +97,7 @@ def _rows_for_source(source: str, fetch_ts: datetime) -> tuple[list[tuple], dict
                 Jsonb(res.request_params), fetch_ts,
                 res.http_status, res.content_type,
                 Jsonb(payload) if payload is not None else None,
-                res.body, _sha256(res.body), None,
+                res.body, _sha256(res.body), dagster_run_id,
             ))
             ok += 1
             print(f"  {series.series_id:9s} [{series.source:10s}] {res.http_status}  {len(res.body)} bytes")
@@ -105,28 +106,76 @@ def _rows_for_source(source: str, fetch_ts: datetime) -> tuple[list[tuple], dict
             status = getattr(getattr(exc, "response", None), "status_code", None) or 0
             rows.append((
                 series.source, series.series_id, _BASE_URLS.get(series.source, ""),
-                Jsonb({}), fetch_ts, status, None, None, None, _sha256(b""), None,
+                Jsonb({}), fetch_ts, status, None, None, None, _sha256(b""), dagster_run_id,
             ))
             print(f"  FAIL {series.series_id:9s} [{series.source:10s}] {exc}")
     return rows, {"source": source, "ok": ok, "failed": failed}
 
 
-def land_source(source: str) -> dict:
+def _insert_rows(rows: list[tuple]) -> int:
+    if not rows:
+        return 0
+    with psycopg.connect(host=PG_HOST, port=PG_PORT, dbname=PG_DB,
+                         user=WRITER_USER, password=WRITER_PASSWORD) as conn:
+        with conn.cursor() as cur:
+            cur.executemany(INSERT_SQL, rows)
+    return len(rows)
+
+
+def land_source(source: str, dagster_run_id: str | None = None) -> dict:
     """Fetch + archive + insert one source's series into raw.source_fetch.
 
     Returns stats; a single series failure never raises (spec §8).
     """
     fetch_ts = datetime.now(timezone.utc)
-    rows, stats = _rows_for_source(source, fetch_ts)
-    landed = 0
-    if rows:
-        with psycopg.connect(host=PG_HOST, port=PG_PORT, dbname=PG_DB,
-                             user=WRITER_USER, password=WRITER_PASSWORD) as conn:
-            with conn.cursor() as cur:
-                cur.executemany(INSERT_SQL, rows)
-        landed = len(rows)
-    stats["landed"] = landed
-    print(f"[ingest:{source}] mode={FETCH_MODE}  {stats['ok']} ok, {stats['failed']} failed, {landed} rows")
+    rows, stats = _rows_for_source(source, fetch_ts, dagster_run_id)
+    stats["landed"] = _insert_rows(rows)
+    print(f"[ingest:{source}] mode={FETCH_MODE}  {stats['ok']} ok, {stats['failed']} failed, "
+          f"{stats['landed']} rows")
+    return stats
+
+
+def land_series(series_id: str, dagster_run_id: str | None = None) -> dict:
+    """Fetch + archive + land ONE series — the single-series refresh path (spec §5).
+
+    Same guarantees as :func:`land_source` (verbatim archive, byte-faithful raw
+    row, sha256, one row per fetch event); only the scope differs. A fetch
+    failure is recorded as a raw row with a null payload rather than raising, so
+    the caller can report it without losing the journal entry.
+    """
+    series = series_by_id(series_id)
+    if series is None:
+        raise ValueError(f"unknown series_id '{series_id}' (not in ingest.config.SERIES)")
+
+    fetch_ts = datetime.now(timezone.utc)
+    try:
+        res = fetch_series(series, fetch_ts.date())
+        _archive(res, fetch_ts)
+        payload = _normalize_payload(res)
+        row = (
+            res.source, res.resource, res.request_url,
+            Jsonb(res.request_params), fetch_ts,
+            res.http_status, res.content_type,
+            Jsonb(payload) if payload is not None else None,
+            res.body, _sha256(res.body), dagster_run_id,
+        )
+        stats = {"series_id": series.series_id, "source": series.source,
+                 "ok": 1, "failed": 0, "status": res.http_status,
+                 "bytes": len(res.body),
+                 "observations": (len(payload.get("observations", [])) if payload else 0)}
+    except Exception as exc:
+        status = getattr(getattr(exc, "response", None), "status_code", None) or 0
+        row = (
+            series.source, series.series_id, _BASE_URLS.get(series.source, ""),
+            Jsonb({}), fetch_ts, status, None, None, None, _sha256(b""), dagster_run_id,
+        )
+        stats = {"series_id": series.series_id, "source": series.source,
+                 "ok": 0, "failed": 1, "status": status, "bytes": 0,
+                 "observations": 0, "error": str(exc)}
+
+    stats["landed"] = _insert_rows([row])
+    print(f"[ingest:series] {series.series_id} [{series.source}] mode={FETCH_MODE} "
+          f"status={stats['status']} obs={stats['observations']} landed={stats['landed']}")
     return stats
 
 

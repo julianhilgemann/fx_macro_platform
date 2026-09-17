@@ -1,8 +1,13 @@
-"""Read-only FastAPI over the Postgres marts (spec §10).
+"""FastAPI over the Postgres marts (spec §10).
 
-Connects as `platform_reader` (SELECT on marts/meta only). Serves observations
-from the bitemporal fact with an optional `as_of` parameter. All endpoints return
-the `{data, meta}` envelope; query bounds are enforced here (not in SQL).
+The data surface is read-only: it connects as `platform_reader` (SELECT on
+marts/meta only) and serves observations from the bitemporal fact with an
+optional `as_of` parameter. Every `/v1` endpoint returns the `{data, meta}`
+envelope; query bounds are enforced here (not in SQL).
+
+Owner-only trigger endpoints (queue a Dagster run) live on a separate router at
+`/ops`, behind an `X-Ops-Key` header — see `api/ops.py` and spec §10. They never
+write warehouse data themselves; they ask Dagster for a run and report it.
 """
 from __future__ import annotations
 
@@ -12,9 +17,11 @@ import psycopg
 from fastapi import FastAPI, HTTPException, Query
 from pydantic import BaseModel
 
+from api.ops import router as ops_router
 from ingest.config import PG_DB, PG_HOST, PG_PORT, READER_PASSWORD, READER_USER
 
-app = FastAPI(title="FX Macro Data Platform", version="0.2.0")
+app = FastAPI(title="FX Macro Data Platform", version="0.3.0")
+app.include_router(ops_router)
 
 MAX_PAGE_SIZE = 1000
 MAX_SERIES_IDS = 20

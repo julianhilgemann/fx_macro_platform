@@ -1,3 +1,5 @@
+-- Rebuilt by the single-series refresh path (tag:ops_refresh).
+{{ config(tags=['ops_refresh']) }}
 -- Resampled grains mart (table). One row per (series_id, grain, period_date),
 -- values follow last-observation-in-period semantics. Grains are never finer
 -- than the series' native frequency (asserted by a singular test) and range

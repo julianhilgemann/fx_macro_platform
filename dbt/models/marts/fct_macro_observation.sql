@@ -1,3 +1,5 @@
+-- Rebuilt by the single-series refresh path (tag:ops_refresh).
+{{ config(tags=['ops_refresh']) }}
 -- Bitemporal fact (spec §6): grain (series_id, obs_date, known_at).
 select
     md5(concat_ws('|', series_id, cast(obs_date as varchar), cast(known_at as varchar))) as observation_key,
