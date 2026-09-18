@@ -48,3 +48,6 @@ docs/research/**/*.pdf
 docs/research/**/*.html
 docs/research/**/*.txt
 docs/research/**/*.xlsx
+
+# Obsidian vault workspace state (per-user UI layout, not shared content).
+.obsidian/

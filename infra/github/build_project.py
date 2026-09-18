@@ -30,6 +30,7 @@ import json
 import subprocess
 import sys
 import time
+from datetime import date, timedelta
 from pathlib import Path
 
 import requests
@@ -60,6 +61,9 @@ STATE_GROUP_TO_STATUS = {
     "cancelled": "Done",
 }
 PRIORITY_OPTIONS = [("Urgent", "RED"), ("High", "ORANGE"), ("Medium", "YELLOW"), ("Low", "GRAY")]
+# Ordering used when spreading tickets across a module window: most urgent and
+# heaviest work first, so it gets the most runway.
+PRIORITY_ORDER = {"urgent": 0, "high": 1, "medium": 2, "low": 3, "none": 4}
 INITIATIVE_COLORS = ["BLUE", "GREEN", "PURPLE", "ORANGE", "PINK", "GRAY"]
 
 BATCH = 12
@@ -328,6 +332,56 @@ def existing_items(gh: Gh, project_id: str) -> dict[str, str]:
         cursor = page["endCursor"]
 
 
+def spread_plan(proposal: dict, restore: bool) -> dict[str, tuple[str, str]]:
+    """Assign each ticket a start/target date inside its module's window.
+
+    SYNTHETIC DATES. The roadmap only gives tickets a module, not a schedule, so
+    these dates are derived, not observed:
+      * every ticket stays inside its own module's start→target range, so the
+        module bars on the Roadmap view are unchanged;
+      * tickets are ordered urgent → low, then by descending estimate, so the
+        critical and heaviest work lands earliest in the window;
+      * the window is divided into N contiguous slots (integer days), with the
+        final ticket ending exactly on the module target.
+
+    restore=True instead resets every ticket to its module's own dates, undoing
+    the spread.
+    """
+    modules = {m["name"]: m for m in proposal["modules"]}
+    by_module: dict[str, list[dict]] = {}
+    for w in proposal["work_items"]:
+        by_module.setdefault(w["module"], []).append(w)
+
+    plan: dict[str, tuple[str, str]] = {}
+    for module_name, tickets in by_module.items():
+        m = modules[module_name]
+        ms = date.fromisoformat(m["start_date"])
+        mt = date.fromisoformat(m["target_date"])
+        if restore:
+            for w in tickets:
+                plan[w["name"]] = (m["start_date"], m["target_date"])
+            continue
+
+        days = (mt - ms).days + 1
+        ordered = sorted(
+            tickets,
+            key=lambda w: (
+                PRIORITY_ORDER.get(w.get("priority", "none"), 9),
+                -(w.get("estimate_points") or 0),
+                w["name"],
+            ),
+        )
+        n = len(ordered)
+        for i, w in enumerate(ordered):
+            start_off = (i * days) // n
+            end_off = max(((i + 1) * days) // n - 1, start_off)
+            plan[w["name"]] = (
+                (ms + timedelta(days=start_off)).isoformat(),
+                (ms + timedelta(days=end_off)).isoformat(),
+            )
+    return plan
+
+
 def populated_fields(gh: Gh, project_id: str) -> dict[str, set[str]]:
     """item id -> names of fields that already carry a value.
 
@@ -523,6 +577,16 @@ def main() -> None:
         action="store_true",
         help="overwrite field values that are already set (default: only fill blanks)",
     )
+    ap.add_argument(
+        "--spread-tickets",
+        action="store_true",
+        help="SYNTHETIC: give each ticket its own dates spread across its module's window",
+    )
+    ap.add_argument(
+        "--restore-module-dates",
+        action="store_true",
+        help="undo --spread-tickets: reset every ticket to its module's own dates",
+    )
     args = ap.parse_args()
 
     token = load_token()
@@ -651,6 +715,28 @@ def main() -> None:
         print(f"    {skipped_kept} existing values left untouched (use --force-values to overwrite)")
     if not args.dry_run:
         set_values(gh, project_id, updates)
+
+    if args.spread_tickets or args.restore_module_dates:
+        print("\n[3b/4] per-ticket dates")
+        plan = spread_plan(proposal, restore=args.restore_module_dates)
+        date_updates = []
+        for ticket_name, (s, t) in plan.items():
+            entry = issue_map.get(ticket_name)
+            if not entry:
+                continue
+            item_id = item_by_content.get(entry.get("node_id", ""))
+            if not item_id:
+                continue
+            date_updates.append((item_id, start_field["id"], {"date": s}))
+            date_updates.append((item_id, target_field["id"], {"date": t}))
+        if args.restore_module_dates:
+            print(f"    restored module dates on {len(plan)} tickets (spread undone)")
+        else:
+            print(f"    spread {len(plan)} tickets across their module windows")
+            print("    NOTE: per-ticket dates are SYNTHESISED for planning, not observed.")
+            print("          Every ticket stays inside its own module's window.")
+        if not args.dry_run:
+            set_values(gh, project_id, date_updates)
 
     print("\n[4/4] views")
     if args.dry_run:

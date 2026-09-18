@@ -63,6 +63,26 @@ Field values are populated **additively**: only blanks are filled, so re-running
 never overwrites manual triage. Pass `--force-values` to deliberately overwrite
 everything from the proposal.
 
+### Spreading tickets across the Roadmap view
+
+By default every ticket carries its **module's** dates, so the Roadmap view draws
+all of a module's tickets stacked in one place. To give each ticket its own slot:
+
+```bash
+# give each ticket its own dates, evenly sequenced inside its module's window
+../../.venv/bin/python build_project.py --project-number 3 --spread-tickets
+
+# undo it — put every ticket back on its module's dates
+../../.venv/bin/python build_project.py --project-number 3 --restore-module-dates
+```
+
+> **These per-ticket dates are synthesised, not observed.** The roadmap records a
+> module per ticket, never a schedule. The spread keeps every ticket inside its
+> own module's window (so module bars do not move), orders work urgent → low and
+> heaviest-first, divides the window into contiguous integer-day slots, and ends
+> the last ticket on the module target. Use it to gauge shape and sequence; don't
+> treat it as commitment. Reset any time with `--restore-module-dates`.
+
 Run `--preflight` first: without it, a fine-grained token missing the *Projects*
 account permission only fails partway through step 2, as an opaque GraphQL
 permission error.
