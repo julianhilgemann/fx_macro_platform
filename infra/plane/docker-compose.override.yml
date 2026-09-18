@@ -1,0 +1,17 @@
+# Local overrides for the vendored Plane compose file.
+#
+# Applied automatically by plane.sh as a second -f layer, which keeps
+# docker-compose.yml byte-identical to the upstream v1.4.2 release so
+# re-downloading it on upgrade stays a clean operation.
+#
+# Why the MinIO image is repointed:
+#   MinIO withdrew free distribution of its Docker Hub images in October 2025,
+#   so `minio/minio:latest` now fails with:
+#     pull access denied for minio/minio, repository does not exist or may
+#     require 'docker login'
+#   The same images are still published on Quay, so the bundled object store
+#   (used for file attachments and avatars, USE_MINIO=1) is pointed there.
+#   Nothing else about the service changes.
+services:
+  plane-minio:
+    image: quay.io/minio/minio:latest

@@ -1,0 +1,14 @@
+# Local Plane deployment configuration and secrets.
+# plane.env holds generated shared secrets (Django SECRET_KEY, live-server key,
+# MinIO credentials) — it is machine-local and must never be committed.
+plane.env
+
+# Isolated Docker client config (works around the broken `desktop` credential
+# helper on this machine; contains no credentials).
+.docker/
+
+# Runtime/backup artefacts produced by Plane's own tooling.
+archive/
+*.env.bak
+# Local credentials and secrets (never commit).
+.credentials.local

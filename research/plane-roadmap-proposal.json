@@ -1,0 +1,1782 @@
+{
+  "instance": {
+    "workspace_name": "FX Macro Platform",
+    "workspace_slug": "fx-macro-platform",
+    "project_identifier": "FXM",
+    "project_name": "FX Macro Data Platform"
+  },
+  "project_summary": "A single-operator, point-in-time macro/FX data platform: three upstream sources (FRED/ALFRED, ECB SDW, Bundesbank) are fetched byte-faithfully into an append-only Postgres raw landing table, transformed by dbt into a bitemporal fact grain (series_id, obs_date, known_at) plus precomputed grain/transform marts, orchestrated by Dagster, and served through a read-only FastAPI layer (platform_reader) to Metabase, dbt docs, Elementary and a five-page Streamlit suite. Roughly 110 series and 0.75M fact rows are live, with the full Compose stack (12 services) running locally. The spec's build order is complete through M4 (Postgres/Compose, Dagster, dbt+Elementary, API, Metabase) plus substantial work beyond it (Data Ops selective refresh, Volatility Studio, a German-economy D3 dashboard, a country-scoring MVP), while M5 (unattended week), M7 (k3s/Tailscale) and M8 (CI/CD) are untouched.",
+  "current_state_assessment": {
+    "what_works": [
+      "Postgres warehouse bootstrap is real and verified: sql/001_init.sh creates raw/staging/intermediate/marts/meta/elementary schemas, the platform_writer/platform_reader roles and the append-only raw.source_fetch table; `make check` counts 6 schemas and passes at runtime.",
+      "Bitemporal fact grain and latest view are materialized: marts.fct_macro_observation (745,450 rows / 110 series) and marts.fct_macro_observation_latest (471,453 rows), with is_latest resolved in int_macro__observations_unioned.sql:33-37.",
+      "Dagster orchestrates a per-model asset graph (one asset per dbt model, ingest assets wired as deps of staging in orchestration/assets/dbt.py:21-52) plus a defined daily schedule (orchestration/schedules.py:12-17).",
+      "dbt is layered and tested: three per-source staging models, an intermediate union, 6 marts and a singular grain test; Elementary is installed with on-run-end artifact upload (dbt/dbt_project.yml:39-50).",
+      "FastAPI read layer works: /health, /ready, /v1/series, /v1/series/{id}, /v1/series/{id}/observations, /v1/observations, /v1/meta/freshness all return the {data,meta} envelope as platform_reader, and the 50-year range and 20-series bounds return HTTP 400 at runtime (verified by curl).",
+      "Owner-only /ops router is properly isolated at a non-/v1 prefix behind a constant-time X-Ops-Key check, and queues Dagster runs rather than writing the warehouse (api/ops.py:42-58, api/dagster_client.py).",
+      "Data Ops selective refresh is a genuine engineering highlight: a selector pre-flight via dbtRunner refuses an empty dbt selection, with the Elementary partial-select workaround documented (orchestration/ops.py:92-134, agents/notes.md:104-118).",
+      "Delivery surface beyond the spec exists and runs: Metabase, CloudBeaver, dbt docs, dbt deps report, Elementary report, launchpad and a 4-page Streamlit suite (Forecast Studio, Signal Lab, Volatility Studio, Data Ops) plus the German dashboard on :8084.",
+      "Precomputed analytics marts are populated and indexed: fct_macro_series_grains (806,952 rows), fct_macro_series_transforms (5,475,118 rows), fct_macro_series_period_metrics (806,952 rows)."
+    ],
+    "what_is_incomplete": [
+      "M5 has not started: the Dagster `instigators` table is empty (schedule never turned on), the runs table holds only 10 manually-triggered runs (6 SUCCESS / 4 FAILURE, 2026-09-05..09-17), and raw.source_fetch holds 275 fetch events for 110 series (~2.5 per series) instead of daily history.",
+      "The spec's four Dagster asset checks (freshness, volume, nulls, revision anomaly) are not implemented — there is no @asset_check anywhere; the 97 asset_check_executions rows all come from dbt tests via dagster-dbt.",
+      "No CI/CD: .github/ does not exist, so spec §16's ruff → mypy → pytest → dbt parse → dbt build → image build pipeline and the deploy workflow are absent.",
+      "make check is not the spec §22.2 gate: the Makefile has no lint/type/test/dbt-parse targets (ruff and mypy are not even dependencies), and every line ends in `|| echo \"... FAIL\"`, so `make check` printed FAIL-style output while still exiting 0.",
+      "Real FRED vintage history is not captured: ingest/fetch.py:49-54 calls the plain observations endpoint with no realtime_start/realtime_end, every observation in a fetch carries one request-scoped realtime_start (raw/fred/DEXUSEU/2026-09-06T12:50:15.866691Z.json shows 2026-08-31 for all 6,955 rows), and the warehouse holds at most 3 distinct known_at values for any series.",
+      "The spec §5 change-detection promise is unused: payload_sha256 is written and indexed but never read (referenced only in prose at dbt/models/staging/sources.yml:11), so every build re-explodes the entire raw history.",
+      "M7 and M8 are absent: no k8s/ manifests, no Tailscale/admin-plane separation, no cert-manager, no backup CronJob, no restore test.",
+      "Spec §12's repo layout is only partly delivered: no images/ split, no orchestration/resources/ or checks/, no scripts/smoke.sh, no CLAUDE.md, no docker-compose.override.yml.",
+      "The series catalog is maintained twice — ingest/config.py:81-216 (110 Series entries) and dbt/seeds/series_catalog.csv (110 rows) — and docs/api-calls.md:9-13 contradicts itself about which is authoritative.",
+      "Both analytics models and the liveability scorer are outside the warehouse/API: the country score runs in Python at page render (dashboard/liveability.py, scripts/liveability_model.py), there is no country mart and no POST /v1/score that spec §19 promises.",
+      "Observability beyond phase 0 is a proposal only (docs/observability-plan.md:3) and the spec §18 weekly digest does not exist; a 291-day-stale ECB HICP series sits in the warehouse unflagged.",
+      "Live data defects are visible and unguarded: ECB_HICP and ECB_HICP_CORE have not updated since 2025-12-01 (291 days), and one Bundesbank fetch (DE_TS_10Y) is recorded with HTTP 404 at 2026-09-17 15:24:13."
+    ],
+    "key_risks": [
+      "Bitemporal integrity is the platform's central promise (spec §1.2, §6) but is currently unverifiable retroactively: with request-scoped known_at and no ALFRED backfill, 'what did we know on date X' can only be answered forward from the handful of fetches already stored.",
+      "Unbounded warehouse growth: staging reads every raw payload ever landed, so a daily schedule over 110 series would add a full history re-explosion per day on top of an already 5.47M-row full-refresh transform mart (spec §9's 'revisit when a build exceeds a minute' threshold is plausibly already crossed).",
+      "The daily schedule has never run unattended, so retries, timezone handling, credential expiry and idempotency are all untested — exactly the failure class spec §20 M5 exists to surface; there is no retry/backoff in the fetch clients at all.",
+      "Silent failures are systemic in the analytics layer: bare `except: pass` in lab.py/forecast.py/volatility.py and empty-DataFrame fallbacks in the Signal Lab loaders turn connection errors, failed diagnostics and failed CV folds into blank or NaN output indistinguishable from real results.",
+      "Documentation has drifted from the code in ways that mislead operators and agents: README claims a 'Postgres only' make up and '5 services' while Compose defines 13, docs/migration-plan.md still frames the retired DuckDB slice as current, index_100 is documented as series-inception but implemented per-grain, and the liveability docs disagree with the seed on country counts, child cost and the exit-tax rule.",
+      "Credential defaults are committed (ops_dev_key, writer_dev/reader_dev, Cloudbeaver123) and several are undocumented in .env.example, while invariant §22.5.5 forbids credentials outside .env/.env.example.",
+      "The public API is missing its stated defensive layer — no CORS allowlist, no Cache-Control, no page-size bound on observation endpoints, and a new Postgres connection per request — which is precisely the resource-abuse threat model spec §10 calls out."
+    ]
+  },
+  "initiatives": [
+    {
+      "name": "Engineering Foundations & Delivery Pipeline",
+      "description": "Restore the machine-checkable definition of done the spec's agentic build model depends on (M-1) and add the CI/CD pipeline that gates and ships changes (M8). Covers CLAUDE.md, a `make check` that actually fails, lint/type tooling, an endpoint smoke test, the image split the spec prescribes, CI for all three custom images, and the docs/repo-contract drift that currently misleads operators and agents.",
+      "why": "Spec §22.2 states that a green `make check` is the only acceptance signal an executor may claim, and §22.4/§22.5 require CLAUDE.md and the invariants list to be visible to every agent. Today `make check` always exits 0 (Makefile:15-21) and CLAUDE.md does not exist, so no automated verdict exists anywhere in the repo; with no .github/ there is also no CI, and no record of why the stack grew from the spec's 5 services to 12 (invariant §22.5.6).",
+      "module_names": [
+        "Agent Scaffolding & Repo Contracts (M-1)",
+        "CI/CD Delivery Pipeline (M8)"
+      ]
+    },
+    {
+      "name": "Data Contracts & Warehouse Integrity",
+      "description": "Close the gap between the spec's raw-landing and bitemporal contracts and what the code actually delivers, and keep the warehouse rebuildable and affordable as it grows. Covers real FRED/ALFRED vintages, the spec §6 no-change rule for ECB/Bundesbank, payload_sha256 change detection, bounded staging fan-out, incremental/partitioned marts, a single authoritative series catalog, the spec §8 asset checks, and the dbt tests that make mart semantics trustworthy.",
+      "why": "The platform's reason to exist is point-in-time correctness ('vintages are preserved', spec §1.2), yet known_at is request-scoped for FRED and fetch-dated for ECB/Bundesbank, the sha256 skip mechanism is unused, and staging re-reads all history on every build — already 745k fact rows and 5.47M transform rows. Meanwhile the catalog is hand-maintained in two places and the four spec §8 asset checks do not exist, so a 291-day-stale ECB series produced no signal.",
+      "module_names": [
+        "Bitemporal Vintage Fidelity",
+        "Warehouse Scale & Incremental Rebuild",
+        "Series Catalog Single Source of Truth",
+        "Data Quality & Asset Checks"
+      ]
+    },
+    {
+      "name": "Data Serving & Analytics APIs",
+      "description": "Make the read layer honour the full spec §10 contract (CORS allowlist, cache headers, enforced query bounds, pooled connections, honest warehouse_build provenance) and then expose the platform's second analytics payload — country scoring and liveability — through a warehouse mart and a POST /v1/score endpoint as spec §19 anticipates.",
+      "why": "The API already returns the correct envelope and enforces two of the three bounds, so this is finishing a contract rather than designing one: runtime probes show no Cache-Control header, a 405 on CORS preflight, a silently ignored page-size parameter, and one new psycopg connection per request. Country scoring currently runs in Streamlit at render time from a Python-only seed, which means the platform's most opinionated output is neither reproducible nor versioned in the warehouse.",
+      "module_names": [
+        "Public API Contract (spec §10)",
+        "Country Scoring & Liveability API (spec §19)"
+      ]
+    },
+    {
+      "name": "Unattended Operations & Reliability",
+      "description": "Turn the platform from something a human triggers into something that runs and reports itself: enable and prove the daily schedule (M5), make ingest resilient and observable, ret rid of the Dagster-bypassing legacy pipeline script, and add the backup/restore and alerting loop the spec requires before the box holds data worth losing (spec §17, §18).",
+      "why": "The schedule is defined (orchestration/schedules.py:12-17) but has never been enabled — the Dagster instigators table is empty and all 10 recorded runs were manual — so the spec's own M5 criterion (seven consecutive green runs) has not been attempted and every assumption about credentials, retries, timezones and idempotency remains untested. Nothing dumps Postgres, adjacent state (Metabase H2, CloudBeaver) is outside any backup scope, and the spec's weekly digest tripwire does not exist.",
+      "module_names": [
+        "Unattended Daily Pipeline (M5)",
+        "Backup, Restore & Alerting",
+        "Infrastructure Observability (spec §18)"
+      ]
+    },
+    {
+      "name": "Production Deployment on k3s",
+      "description": "Execute the Compose-first, k3s-second half of the plan: author the manifests, probes and resource limits, build multi-arch images and publish them with immutable SHA tags, and enforce the two-plane access model so exactly one public hostname exists (api.) while Dagster, Metabase and the reports stay on the tailnet.",
+      "why": "Spec §1.5 and §20 M7 deliberately defer the cluster until the pipeline has run unattended locally for a week, so this initiative is gated on Unattended Operations by design. Nothing of it exists yet (no k8s/, no .github/), and §15a warns that the window between 'the box is on the internet' and 'access control is configured' is the one that gets exploited — Tailscale must be installed before the first Ingress.",
+      "module_names": [
+        "k3s Manifests & Release (M7)",
+        "Access & Exposure Model (spec §15a)"
+      ]
+    },
+    {
+      "name": "Analytics Delivery & Research Surface",
+      "description": "Harden the research-facing surface that has grown well past the spec: give the Streamlit suite and the German dashboard shared, cached, pooled data access; replace silent exception swallowing with visible failures; add the unit tests the analytics modules have never had; and consolidate the artefacts (reference prototypes, DuckDB leftovers, duplicated liveability models) that make the repo ambiguous about what is canonical.",
+      "why": "Roughly 4,400 lines of analytics code (lab.py, volatility.py, forecast.py, liveability.py, the four pages, germany/main.py) have zero test coverage while carrying bare `except: pass` blocks and magic constants, and durable README/spec claims about them are already false (the filtered slice does not feed the Decomposition tab; scikit-learn ships but is never imported; Signal Lab never reads the period-metrics mart built for it). These are the outputs most likely to be trusted without inspection, so their silence is the highest-value thing to fix.",
+      "module_names": [
+        "Streamlit Analytics Hardening",
+        "Germany Macro Dashboard"
+      ]
+    }
+  ],
+  "modules": [
+    {
+      "name": "Agent Scaffolding & Repo Contracts (M-1)",
+      "initiative": "Engineering Foundations & Delivery Pipeline",
+      "description": "Deliver the repo preconditions the agentic build model assumes: CLAUDE.md with the five principles and the seven invariants, a `make check` whose exit code is a real verdict (lint/type/test/dbt-parse), ruff and mypy configuration, an endpoint smoke script, a decision record for every service added beyond spec §2, and a README/migration-plan refresh so the repo stops contradicting itself.",
+      "state": "in-progress",
+      "start_date": "2026-09-21",
+      "target_date": "2026-10-16",
+      "milestones": [
+        {
+          "name": "CLAUDE.md committed and make check exits non-zero on failure",
+          "target_date": "2026-10-02"
+        },
+        {
+          "name": "ruff + mypy green on ingest/api/orchestration and wired into make check",
+          "target_date": "2026-10-09"
+        },
+        {
+          "name": "scripts/smoke.sh covers every documented endpoint with 200/400 assertions",
+          "target_date": "2026-10-16"
+        }
+      ]
+    },
+    {
+      "name": "CI/CD Delivery Pipeline (M8)",
+      "initiative": "Engineering Foundations & Delivery Pipeline",
+      "description": "Build the GitHub Actions pipeline the spec defines: on push, ruff → mypy → pytest → dbt parse → dbt build against an ephemeral Postgres service container → validate every custom image; on merge to main, build linux/arm64 images, push to GHCR with both the git SHA and latest, and roll the Deployments so `kubectl rollout undo` has a target.",
+      "state": "planned",
+      "start_date": "2026-09-28",
+      "target_date": "2027-01-29",
+      "milestones": [
+        {
+          "name": "ci.yml green on the current main branch (synthetic fetch mode)",
+          "target_date": "2026-10-30"
+        },
+        {
+          "name": "All three custom images build in CI (platform, dashboard, germany)",
+          "target_date": "2026-11-27"
+        },
+        {
+          "name": "deploy.yml pushes SHA-tagged arm64 images and rolls the cluster",
+          "target_date": "2027-01-29"
+        }
+      ]
+    },
+    {
+      "name": "Bitemporal Vintage Fidelity",
+      "initiative": "Data Contracts & Warehouse Integrity",
+      "description": "Make the warehouse answer 'what did we know on date X' honestly: capture real FRED revision history through ALFRED real-time parameters, apply the spec §6 insert-only-on-change rule to the vintage-less sources, settle the known_at type decision, and add tests that prove as-of querying and vintage coverage work.",
+      "state": "in-progress",
+      "start_date": "2026-09-21",
+      "target_date": "2026-10-30",
+      "milestones": [
+        {
+          "name": "ALFRED real-time parameters landed and known_at populated from true vintages",
+          "target_date": "2026-10-16"
+        },
+        {
+          "name": "ECB/Bundesbank vintages insert only on value change",
+          "target_date": "2026-10-23"
+        },
+        {
+          "name": "As-of query test proves a historical vintage is retrievable via ?as_of=",
+          "target_date": "2026-10-30"
+        }
+      ]
+    },
+    {
+      "name": "Warehouse Scale & Incremental Rebuild",
+      "initiative": "Data Contracts & Warehouse Integrity",
+      "description": "Stop rebuilding the world on every run: use payload_sha256 to skip byte-identical fetches downstream, bound the staging fan-out to the newest payload per (source, resource), and move the 5.47M-row transform mart and 745k-row fact table to an incremental or partitioned strategy with measured build timings behind the decision.",
+      "state": "planned",
+      "start_date": "2026-10-05",
+      "target_date": "2026-11-27",
+      "milestones": [
+        {
+          "name": "Staging reads one payload per resource; row counts under a documented ceiling",
+          "target_date": "2026-10-30"
+        },
+        {
+          "name": "sha256 change detection skips unchanged fetches end to end",
+          "target_date": "2026-11-13"
+        },
+        {
+          "name": "Transform/fact marts build incrementally with recorded per-model timings",
+          "target_date": "2026-11-27"
+        }
+      ]
+    },
+    {
+      "name": "Series Catalog Single Source of Truth",
+      "initiative": "Data Contracts & Warehouse Integrity",
+      "description": "Retire the two-registry problem: make dbt/seeds/series_catalog.csv the authoritative catalog that ingest reads, stop the API importing the ingest package's Python registry, remove the dead PENDING_SERIES placeholder, and add a consistency test for the transition period.",
+      "state": "planned",
+      "start_date": "2026-09-28",
+      "target_date": "2026-10-23",
+      "milestones": [
+        {
+          "name": "Ingest and dbt both read one catalog definition",
+          "target_date": "2026-10-16"
+        },
+        {
+          "name": "CI test fails the build if the two registries differ",
+          "target_date": "2026-10-23"
+        }
+      ]
+    },
+    {
+      "name": "Data Quality & Asset Checks",
+      "initiative": "Data Contracts & Warehouse Integrity",
+      "description": "Make data problems visible instead of silent: implement the spec §8 Dagster asset checks (freshness, volume, nulls, revision anomaly), add dbt source freshness and the missing relationships test, apply Elementary anomaly tests now that history exists, test the documented mart semantics, and stop running the Elementary report as a long-lived service.",
+      "state": "planned",
+      "start_date": "2026-09-21",
+      "target_date": "2026-11-13",
+      "milestones": [
+        {
+          "name": "The ECB HICP staleness defect explained and fixed",
+          "target_date": "2026-10-09"
+        },
+        {
+          "name": "Four asset checks registered and warning (not failing) the run",
+          "target_date": "2026-10-30"
+        },
+        {
+          "name": "Elementary anomaly tests and mart-semantics tests green in CI",
+          "target_date": "2026-11-13"
+        }
+      ]
+    },
+    {
+      "name": "Public API Contract (spec §10)",
+      "initiative": "Data Serving & Analytics APIs",
+      "description": "Finish the read layer's stated contract: explicit CORS allowlist, Cache-Control on observation endpoints, an enforced max page size that returns 400 instead of silently ignoring the parameter, a pooled connection strategy, and a warehouse_build value that really reports the last dbt build rather than max(known_at).",
+      "state": "in-progress",
+      "start_date": "2026-09-21",
+      "target_date": "2026-10-30",
+      "milestones": [
+        {
+          "name": "CORS, Cache-Control and page-size bound verified by smoke test",
+          "target_date": "2026-10-16"
+        },
+        {
+          "name": "API reads through a pool of 5-10 connections",
+          "target_date": "2026-10-30"
+        }
+      ]
+    },
+    {
+      "name": "Country Scoring & Liveability API (spec §19)",
+      "initiative": "Data Serving & Analytics APIs",
+      "description": "Move country scoring out of Streamlit and into the platform: a country mart over the seed plus country-level macro series, a POST /v1/score endpoint taking user preference weights, one canonical scoring implementation instead of two, and reconciliation of the liveability docs against the seed (country counts, child cost, the exit-tax rule).",
+      "state": "planned",
+      "start_date": "2026-11-02",
+      "target_date": "2027-01-15",
+      "milestones": [
+        {
+          "name": "Liveability docs and seed reconciled to one agreed scope",
+          "target_date": "2026-11-27"
+        },
+        {
+          "name": "Country mart materialized by the daily dbt build",
+          "target_date": "2026-12-18"
+        },
+        {
+          "name": "POST /v1/score returns documented scores with weights echoed",
+          "target_date": "2027-01-15"
+        }
+      ]
+    },
+    {
+      "name": "Unattended Daily Pipeline (M5)",
+      "initiative": "Unattended Operations & Reliability",
+      "description": "Enable the 06:00 Europe/Berlin schedule and prove it: seven consecutive green runs with no manual intervention, retry/backoff and failure surfacing in the fetch clients, richer ingest metadata, and retirement of the legacy run_pipeline.sh that bypasses Dagster and leaves dagster_run_id null.",
+      "state": "planned",
+      "start_date": "2026-09-21",
+      "target_date": "2026-10-30",
+      "milestones": [
+        {
+          "name": "Schedule enabled and first unattended run green",
+          "target_date": "2026-10-09"
+        },
+        {
+          "name": "Seven consecutive unattended green runs recorded",
+          "target_date": "2026-10-23"
+        },
+        {
+          "name": "run_pipeline.sh retired or re-pointed at Dagster",
+          "target_date": "2026-10-30"
+        }
+      ]
+    },
+    {
+      "name": "Backup, Restore & Alerting",
+      "initiative": "Unattended Operations & Reliability",
+      "description": "Protect the one thing that is not rebuildable: nightly pg_dump of all three databases to object storage with 30-day retention, a tested restore into local Compose, backup coverage extended to the non-Postgres state (Metabase H2, CloudBeaver workspace), and a weekly digest that reports series updated, checks failed, largest revisions and freshness violations.",
+      "state": "planned",
+      "start_date": "2026-10-12",
+      "target_date": "2026-12-04",
+      "milestones": [
+        {
+          "name": "Nightly dump runs and is verifiable in object storage",
+          "target_date": "2026-11-06"
+        },
+        {
+          "name": "Restore into a fresh Compose stack succeeds and is documented",
+          "target_date": "2026-11-20"
+        },
+        {
+          "name": "Weekly digest delivered on a schedule",
+          "target_date": "2026-12-04"
+        }
+      ]
+    },
+    {
+      "name": "Infrastructure Observability (spec §18)",
+      "initiative": "Unattended Operations & Reliability",
+      "description": "Decide and execute layer 3: either adopt the proposed Prometheus/Loki/Grafana group with postgres-exporter and Alloy, or explicitly defer it with the reasoning recorded, and in either case replace bare print() diagnostics with structured JSON logging in ingest and FastAPI.",
+      "state": "planned",
+      "start_date": "2026-11-02",
+      "target_date": "2027-01-29",
+      "milestones": [
+        {
+          "name": "Observability decision recorded (adopt or defer) against the phase-2 budget",
+          "target_date": "2026-11-27"
+        },
+        {
+          "name": "Structured JSON logs from ingest and FastAPI",
+          "target_date": "2026-12-18"
+        },
+        {
+          "name": "Container and Postgres dashboards queryable from a single UI",
+          "target_date": "2027-01-29"
+        }
+      ]
+    },
+    {
+      "name": "k3s Manifests & Release (M7)",
+      "initiative": "Production Deployment on k3s",
+      "description": "Translate the running Compose stack into a single-node k3s deployment: manifests for postgres (Recreate, PVC 20Gi, ClusterIP only), the two Dagster processes, the api (2 replicas), Metabase and the report servers; probes and the spec's resource requests/limits; multi-arch images; and a kustomize prod overlay with Secret/ConfigMap separation.",
+      "state": "planned",
+      "start_date": "2026-11-16",
+      "target_date": "2027-02-26",
+      "milestones": [
+        {
+          "name": "k8s/base applies cleanly to a local k3s node",
+          "target_date": "2026-12-18"
+        },
+        {
+          "name": "linux/arm64 images built and published to GHCR with SHA tags",
+          "target_date": "2027-01-15"
+        },
+        {
+          "name": "overlays/prod deploys the full stack on Hetzner CAX",
+          "target_date": "2027-02-26"
+        }
+      ]
+    },
+    {
+      "name": "Access & Exposure Model (spec §15a)",
+      "initiative": "Production Deployment on k3s",
+      "description": "Enforce the two-plane design: exactly one public hostname (api.) with TLS, the admin plane bound to the tailnet only, edge rate limiting on the public Ingress, Postgres and the k3s API server never exposed, and no committed credential defaults anywhere outside .env/.env.example.",
+      "state": "planned",
+      "start_date": "2026-12-07",
+      "target_date": "2027-03-12",
+      "milestones": [
+        {
+          "name": "Tailscale installed and admin UIs reachable only over the tailnet",
+          "target_date": "2027-01-08"
+        },
+        {
+          "name": "TLS issued for api. and nothing else publicly resolvable",
+          "target_date": "2027-02-05"
+        },
+        {
+          "name": "Rate limit middleware and credential hygiene verified",
+          "target_date": "2027-03-12"
+        }
+      ]
+    },
+    {
+      "name": "Streamlit Analytics Hardening",
+      "initiative": "Analytics Delivery & Research Surface",
+      "description": "Make the largest untested surface trustworthy: replace silent exception swallowing with visible failures, add unit tests for the pure analytics functions, wire or delete the dead period-metrics loader, stop the double GARCH fit, derive vols quantiles from the requested levels, label synthetic OHLC as a proxy rather than inference, and share one cached/pooled data layer across the pages.",
+      "state": "in-progress",
+      "start_date": "2026-10-05",
+      "target_date": "2026-12-18",
+      "milestones": [
+        {
+          "name": "No bare except: pass remains in the analytics modules",
+          "target_date": "2026-10-30"
+        },
+        {
+          "name": "lab.py / forecast.py / volatility.py pure functions covered by pytest",
+          "target_date": "2026-11-27"
+        },
+        {
+          "name": "One shared cached data layer; Volatility Studio fits the model once",
+          "target_date": "2026-12-18"
+        }
+      ]
+    },
+    {
+      "name": "Germany Macro Dashboard",
+      "initiative": "Analytics Delivery & Research Surface",
+      "description": "Consolidate the German-economy D3 dashboard onto the platform's contracts: serve the indicator list from marts.dim_series instead of a hardcoded array, share one data-access module with the API and dashboard, cover the endpoints with tests, and make the 31-tenor yield curve survive a missing BBSIS tenor.",
+      "state": "in-progress",
+      "start_date": "2026-10-05",
+      "target_date": "2026-11-20",
+      "milestones": [
+        {
+          "name": "Indicators served from the warehouse catalog",
+          "target_date": "2026-10-30"
+        },
+        {
+          "name": "Endpoint tests green, data-access duplication removed",
+          "target_date": "2026-11-13"
+        },
+        {
+          "name": "Yield-curve endpoint degrades gracefully on a gap",
+          "target_date": "2026-11-20"
+        }
+      ]
+    }
+  ],
+  "work_items": [
+    {
+      "name": "Commit CLAUDE.md as the binding agent contract at repo root",
+      "module": "Agent Scaffolding & Repo Contracts (M-1)",
+      "type": "task",
+      "priority": "high",
+      "state_group": "unstarted",
+      "description_markdown": "Spec §22.2 requires a root `CLAUDE.md` loaded into every agent's context, containing: a pointer to `platform-spec.md` as the authoritative design document, the five design principles from §1 verbatim, the seven invariants from §22.5 verbatim, the commands (`make up`, `make check`, `make smoke`, how to reach Dagster locally), environment facts (macOS, arm64, Docker Desktop, Compose not k3s until M7), and the rule that no agent edits `sql/001_init.sh` or the bitemporal grain without an explicit human decision.\n\n**Acceptance criteria**\n- `CLAUDE.md` exists at repo root and contains all five sections above.\n- The invariants are quoted verbatim, including §22.5.6 (no new Compose service without a decision).\n- `agents/notes.md` is referenced for gotchas rather than duplicated.\n\nNote: `README.md:9-10` currently points agents at `docs/migration-plan.md` and `agents/notes.md` only, and `agents/notes.md:45-47` records that two specs once existed — the contract file is the missing piece.",
+      "evidence": "platform-spec.md §22.2 (lines 865-873), §22.5 (925-941); `ls CLAUDE.md` -> No such file or directory; README.md:9-10",
+      "estimate_points": 2,
+      "labels": [
+        "spec-gap",
+        "agent-workflow",
+        "docs"
+      ]
+    },
+    {
+      "name": "Make `make check` a real gate with lint, type, test and dbt-parse targets",
+      "module": "Agent Scaffolding & Repo Contracts (M-1)",
+      "type": "bug",
+      "priority": "urgent",
+      "state_group": "unstarted",
+      "description_markdown": "The current `check` target is a set of Docker health probes, not the spec §22.2 chain, and it cannot fail: every recipe line ends in `|| echo \"... FAIL\"`, so make sees a successful command and exits 0. Running `make check` on a fully healthy stack printed all five OK lines and `echo $?` returned 0 — the reversed experiment (a stopped service) would also exit 0, which destroys the only acceptance signal spec §22.2 permits an executor to claim.\n\n**Acceptance criteria**\n- `make check` depends on `lint type test dbt-parse` and exits non-zero if any of them fails.\n- `lint` = `ruff check . && ruff format --check .`; `type` = `mypy orchestration api`; `test` = `pytest -q`; `dbt-parse` = `cd dbt && dbt parse`.\n- The existing container-health probes move to a separate `check-stack` target that also exits non-zero and additionally covers metabase, elementary-report, dbt-deps-report, launchpad, cloudbeaver and germany-dashboard.\n- `make ingest` and `make dbt` exist per spec §12.\n- Demonstrate both directions: green tree -> 0; deliberately broken lint -> non-zero.",
+      "evidence": "Makefile:1 (targets are only up/down/build/psql/check/reset), Makefile:15-21 (each probe ends `|| echo \"... FAIL\"`); observed `make check; echo $?` -> `exit=0` with all OK; platform-spec.md:852-864",
+      "estimate_points": 3,
+      "labels": [
+        "spec-gap",
+        "agent-workflow",
+        "ci-cd"
+      ]
+    },
+    {
+      "name": "Add ruff and mypy with repo configuration and dev dependencies",
+      "module": "Agent Scaffolding & Repo Contracts (M-1)",
+      "type": "task",
+      "priority": "high",
+      "state_group": "unstarted",
+      "description_markdown": "`pyproject.toml`'s dev dependency group contains only pytest, and there is no `[tool.ruff]` or `[tool.mypy]` section, so spec §22.2's `lint`/`type` targets cannot exist. This also blocks spec §16's CI first two steps.\n\n**Acceptance criteria**\n- `ruff` and `mypy` added to `[dependency-groups] dev` and to `uv.lock`.\n- `[tool.ruff]` and `[tool.mypy]` configured in `pyproject.toml` with a line length matching the existing code style.\n- `ruff check .`, `ruff format --check .` and `mypy orchestration api ingest` all exit 0 on the current tree (fix or explicitly noqa findings rather than narrowing the target set silently).\n- Document the commands in `CLAUDE.md`.",
+      "evidence": "pyproject.toml:23-26 (dev group = pytest only); no `[tool.ruff]`/`[tool.mypy]` anywhere; platform-spec.md:855-856",
+      "estimate_points": 2,
+      "labels": [
+        "spec-gap",
+        "agent-workflow",
+        "ci-cd"
+      ]
+    },
+    {
+      "name": "Add scripts/smoke.sh asserting 200/400 on every documented endpoint",
+      "module": "Agent Scaffolding & Repo Contracts (M-1)",
+      "type": "task",
+      "priority": "high",
+      "state_group": "unstarted",
+      "description_markdown": "Spec §22.2 names `smoke: ./scripts/smoke.sh  # curl every endpoint, assert 200/400` as part of the M-1 precondition, and §22.4 says `DONE WHEN` must be an executable command. The script does not exist, so there is no endpoint-level verdict at all.\n\n**Acceptance criteria**\n- The script curls and asserts: `/health` 200, `/ready` 200, `/v1/series` 200, `/v1/series/{known}` 200, `/v1/series/{unknown}` 404, `/v1/series/{known}/observations` 200, `/v1/observations` 200, `/v1/meta/freshness` 200, a >50-year range 400, >20 series_ids 400, and (once bound enforcement lands) an over-max page size 400.\n- Exit code is 0 only when every assertion passes; failures print the offending request and status.\n- Wired into `make check` and into CI.\n\nIt must exercise the same surface `README.md:71-87` documents.",
+      "evidence": "platform-spec.md:859; `ls scripts/smoke.sh` -> No such file or directory; README.md:71-87; api/main.py:154-249",
+      "estimate_points": 3,
+      "labels": [
+        "spec-gap",
+        "api",
+        "agent-workflow"
+      ]
+    },
+    {
+      "name": "Add pytest coverage for the API layer (bounds, envelope, 404 paths)",
+      "module": "Agent Scaffolding & Repo Contracts (M-1)",
+      "type": "task",
+      "priority": "high",
+      "state_group": "unstarted",
+      "description_markdown": "`tests/` contains only `test_parse.py` and `test_liveability_model.py`; nothing tests the FastAPI layer, whose bounds and envelope are the contract the spec cares about most. The bound logic (`_range_check`, `MAX_SERIES_IDS`, `MAX_PAGE_SIZE`) is pure and trivially testable with `fastapi.testclient`.\n\n**Acceptance criteria**\n- Tests cover: `from > to` -> 400; range > 50 years -> 400; `series_ids` with 21 ids -> 400; empty `series_ids` -> 400; unknown series -> 404; `/health` without DB; `/ready` reports 503 when the DB is unreachable.\n- Envelope shape asserted for each `/v1` route (keys `data`, `meta`; meta contains `row_count`, `generated_at`, `warehouse_build`).\n- Tests run against a stubbed/connection-injected DB so they pass in CI without Compose.",
+      "evidence": "tests/ = test_parse.py + test_liveability_model.py only; api/main.py:118-122, 174, 226-235; platform-spec.md:401-410",
+      "estimate_points": 3,
+      "labels": [
+        "spec-gap",
+        "api",
+        "ci-cd"
+      ]
+    },
+    {
+      "name": "Split the single image into platform-dagster and platform-api as the spec prescribes",
+      "module": "Agent Scaffolding & Repo Contracts (M-1)",
+      "type": "task",
+      "priority": "medium",
+      "state_group": "backlog",
+      "description_markdown": "Spec §2 states there are exactly two custom images (`platform-dagster`, `platform-api`) and §12 places them at `images/dagster/Dockerfile` and `images/api/Dockerfile`. Today one root `Dockerfile` is built by six services (dagster-webserver, dagster-daemon, api, elementary-report, dbt-deps-report, dbt-docs), and the file itself acknowledges the deviation.\n\n**Acceptance criteria**\n- `images/dagster/Dockerfile` carries dbt + dagster + elementary; `images/api/Dockerfile` carries FastAPI/psycopg only and drops the dbt/Dagster dependency tree.\n- `docker-compose.yml` references the correct Dockerfile per service; the api image must not contain dbt.\n- Both images build for `linux/arm64`.\n- Image sizes recorded before/after in the PR description; `docker compose up` still yields a healthy stack.",
+      "evidence": "Dockerfile:1-3 (comment acknowledging the spec split); docker-compose.yml:22, 48, 61, 153, 166, 179 (same root Dockerfile); platform-spec.md:43-54, 469-471",
+      "estimate_points": 5,
+      "labels": [
+        "spec-gap",
+        "tech-debt"
+      ]
+    },
+    {
+      "name": "Record decision records for the services added beyond the spec's five-service inventory",
+      "module": "Agent Scaffolding & Repo Contracts (M-1)",
+      "type": "task",
+      "priority": "medium",
+      "state_group": "backlog",
+      "description_markdown": "Spec §2 inventories five services and invariant §22.5.6 forbids adding a service to `docker-compose.yml` without an explicit decision, because that is how a five-container stack becomes eleven. The stack now defines 12 services: the seven additions are `dashboard` (Streamlit), `germany-dashboard`, `cloudbeaver`, `launchpad`, `elementary-report`, `dbt-deps-report` and `dbt-docs`. Every one of them is a reasonable addition, but none has a recorded decision, and two of them (`elementary-report`, `dbt-deps-report`) exist only to serve generated artefacts on a timer.\n\n**Acceptance criteria**\n- A short ADR per added service (or one consolidated record) stating purpose, why it is not a spec violation, resource cost on the laptop, and its production disposition (k8s Deployment, static file, or not deployed).\n- Records note that `elementary-report` as a long-lived service contradicts spec §9 and link the remediation ticket.\n- Invariant §22.5.6 restated so future agents have a place to record the decision.",
+      "evidence": "docker-compose.yml:81-110, 129-144, 146-183 vs platform-spec.md:43-49 and invariant §22.5.6 (line 934); docs/observability-plan.md:74 (port-collision list implies an unplanned stack)",
+      "estimate_points": 2,
+      "labels": [
+        "spec-gap",
+        "docs",
+        "tech-debt"
+      ]
+    },
+    {
+      "name": "Refresh docs/migration-plan.md so it describes the shipped Postgres stack",
+      "module": "Agent Scaffolding & Repo Contracts (M-1)",
+      "type": "task",
+      "priority": "high",
+      "state_group": "unstarted",
+      "description_markdown": "`README.md:9-10` names `docs/migration-plan.md` as the working delta list, but the document still frames the repo as the retired DuckDB + cron v1 slice, lists files that already exist as 'New (does not exist yet)', and references `sql/001_init.sql` when the file is `sql/001_init.sh`. This is the single most misleading document for a new agent or contributor.\n\n**Acceptance criteria**\n- §1 'Where we are today' replaced with the actual state (Postgres warehouse, Dagster assets, dbt + Elementary, FastAPI, Streamlit suite, Germany dashboard, liveability MVP, 12 Compose services).\n- §3 file map rewritten as current -> target with only genuinely outstanding rows.\n- The '#5 fixes to fold in while porting' list is marked resolved/unresolved against the code (item 1, FRED vintage, is still open and must link to its ticket).\n- All DuckDB slice sections removed or clearly marked historical; `001_init.sql` corrected to `001_init.sh`.\n- Either retire the file after M8 as §7 says, or state explicitly that it is maintained until then.",
+      "evidence": "docs/migration-plan.md:1-7 (DuckDB framing), :17-25, :40-62, :64-76 (lists existing files as new, names sql/001_init.sql), :89-92 (still-open FRED vintage fix); README.md:9-10, 24-25",
+      "estimate_points": 2,
+      "labels": [
+        "docs",
+        "spec-gap"
+      ]
+    },
+    {
+      "name": "Fix README/Makefile/compose contradictions about starting the stack",
+      "module": "Agent Scaffolding & Repo Contracts (M-1)",
+      "type": "bug",
+      "priority": "medium",
+      "state_group": "unstarted",
+      "description_markdown": "The quick-start instructions contradict each other and the code. `README.md:53-54` labels the local-dev `make up` as 'Postgres only (host port 5433)', but `Makefile:6-7` runs the full stack with `--build`. `README.md:24` and `docs/migration-plan.md:3-5` say five services while `docker-compose.yml` defines 13, and the README service table omits `germany-dashboard` (:8084) and `cloudbeaver` (:8978) even though the launchpad links them.\n\n**Acceptance criteria**\n- One documented way to start everything (`make up`) and one documented Postgres-only path (a real, separate target such as `make up-db`).\n- Service count and the service table match `docker-compose.yml` exactly, including ports.\n- The launchpad tile list (`launchpad/index.html:27-35`) matches the README table.\n- A README smoke check is added to the docs review checklist so the table cannot drift again.",
+      "evidence": "README.md:24, 40, 45-49, 53-57; Makefile:6-7; docker-compose.yml:1-190 (12 services); launchpad/index.html:27-35; docs/migration-plan.md:3-5",
+      "estimate_points": 2,
+      "labels": [
+        "docs",
+        "tech-debt"
+      ]
+    },
+    {
+      "name": "Add .github/workflows/ci.yml implementing the spec §16 pipeline",
+      "module": "CI/CD Delivery Pipeline (M8)",
+      "type": "feature",
+      "priority": "high",
+      "state_group": "backlog",
+      "description_markdown": "There is no `.github/` directory, so nothing runs on push. Spec §16 requires: ruff → mypy → pytest → `dbt parse` → `dbt build` against an ephemeral Postgres service container → build the custom images to validate the Dockerfiles.\n\n**Acceptance criteria**\n- Workflow triggers on push and pull_request.\n- Steps in the specified order; a failure at any step fails the job.\n- Postgres 16 service container with the schemas/roles bootstrapped from `sql/001_init.sh` (the script must run on a clean volume, which `make reset` exercises locally).\n- `dbt build` runs with `FX_FETCH_MODE=synthetic` and no `FRED_API_KEY`, following the agents/notes.md:42-44 gotcha.\n- Workflow file lints with actionlint or equivalent in the same job.",
+      "evidence": "platform-spec.md:680-684, 678-691; `ls .github` -> No such file or directory",
+      "estimate_points": 5,
+      "labels": [
+        "ci-cd",
+        "spec-gap",
+        "agent-workflow"
+      ]
+    },
+    {
+      "name": "Add deploy.yml publishing SHA-tagged arm64 images to GHCR",
+      "module": "CI/CD Delivery Pipeline (M8)",
+      "type": "feature",
+      "priority": "medium",
+      "state_group": "backlog",
+      "description_markdown": "Spec §16's deploy workflow does not exist. Its non-obvious requirement is that images be tagged with the git SHA *and* `latest`, because deploying only `latest` leaves `kubectl rollout undo` with no target and removes a main reason for running k8s at all.\n\n**Acceptance criteria**\n- On merge to main: build `linux/arm64` images, push to GHCR tagged `<sha>` and `latest`.\n- `kubectl set image` (or `kustomize edit set image`) applied per Deployment for api, dagster-webserver, dagster-daemon.\n- A documented, rehearsed rollback using `kubectl rollout undo` against the previous SHA tag.\n- Depends on the k3s manifests module; may be developed against a local k3s node first.",
+      "evidence": "platform-spec.md:685-691; absent `.github/`; no k8s/ directory",
+      "estimate_points": 5,
+      "labels": [
+        "ci-cd",
+        "k8s"
+      ]
+    },
+    {
+      "name": "Build all three custom images in CI, not just the platform image",
+      "module": "CI/CD Delivery Pipeline (M8)",
+      "type": "task",
+      "priority": "medium",
+      "state_group": "backlog",
+      "description_markdown": "Spec §16 says CI should 'build both images to validate the Dockerfiles' because at the time there were two. The stack now has three custom images with separate build contexts and separate dependency stacks: the platform image (root `Dockerfile`), `fx-macro-dashboard` (`dashboard/Dockerfile`, scientific stack) and `fx-macro-germany` (`germany/Dockerfile`). A broken dashboard or germany Dockerfile currently cannot be detected before `make up` or a deploy.\n\n**Acceptance criteria**\n- CI builds all three images on every push, using each service's declared context.\n- Build failures name the offending Dockerfile and context.\n- The dashboard and germany images are added to the deploy workflow's push/rollout matrix once k3s lands.",
+      "evidence": "docker-compose.yml:82-83 (dashboard build context), :100-101 (germany build context); dashboard/Dockerfile; germany/Dockerfile; platform-spec.md:683",
+      "estimate_points": 2,
+      "labels": [
+        "ci-cd",
+        "spec-gap"
+      ]
+    },
+    {
+      "name": "Pin CI's dbt path to synthetic fetch mode and document the no-key contract",
+      "module": "CI/CD Delivery Pipeline (M8)",
+      "type": "task",
+      "priority": "medium",
+      "state_group": "backlog",
+      "description_markdown": "CI cannot call FRED without a key, and the repo already has the correct mechanism: `FX_FETCH_MODE` auto-selects `synthetic` when no key is present, emitting deterministic FRED-shaped JSON so the pipeline runs end to end. This needs to be an explicit, documented CI contract rather than an accident of environment.\n\n**Acceptance criteria**\n- CI sets `FX_FETCH_MODE=synthetic` and asserts `FRED_API_KEY` is unset.\n- A test asserts that synthetic mode produces a non-empty payload for every source in `ingest.config.SERIES`, so a new source without a synthetic path fails CI.\n- `agents/notes.md` and `CLAUDE.md` state that synthetic is the CI path and that live mode is for the operator's laptop only.\n- The synthetic generator's FRED shape (including `realtime_start`) is documented as a fixture, not as production vintage data.",
+      "evidence": "ingest/config.py:43 (FETCH_MODE fallback), ingest/fetch.py:202-223 (synth_payload); .env.example:7-10; agents/notes.md:42-44; tests/test_parse.py:11-18 uses a synthetic-shaped payload",
+      "estimate_points": 2,
+      "labels": [
+        "ci-cd",
+        "docs"
+      ]
+    },
+    {
+      "name": "Capture real FRED revision history through ALFRED real-time parameters",
+      "module": "Bitemporal Vintage Fidelity",
+      "type": "feature",
+      "priority": "urgent",
+      "state_group": "unstarted",
+      "description_markdown": "The spec chose FRED as source #1 precisely because its vintage support lets the bitemporal model be built against real revision history (spec §3), and the fact grain is `(series_id, obs_date, known_at)` (spec §6). But `fetch_fred` requests the plain observations endpoint with only `series_id`, `api_key`, `file_type` and `observation_start`; it never sends `realtime_start`/`realtime_end`. FRED therefore labels every observation in a response with one request-scoped realtime date: `raw/fred/DEXUSEU/2026-09-06T12:50:15.866691Z.json` carries `realtime_start = 2026-08-31` on all 6,955 rows, and a warehouse query shows at most 3 distinct `known_at` values for any series (minimum 1). `docs/migration-plan.md:89-92` flagged exactly this and it is still open.\n\n**Acceptance criteria**\n- Fetch uses ALFRED real-time semantics (`realtime_start`/`realtime_end`, or the vintage/release endpoints) so a historical vintage can be retrieved deliberately.\n- A backfill job populates revision history for at least the daily FRED series, with `pdf`/`realtime` semantics recorded per row.\n- `known_at` values are distinct per genuine revision rather than uniform across a fetch.\n- A test proves an as-of query for a historical date returns the value known then, distinct from today's value where a revision exists.\n- Landed rows remain byte-faithful in `payload_raw` and the change is reflected in `docs/api-calls.md`'s FRED section, which currently documents a response shape with no realtime fields at all.",
+      "evidence": "ingest/fetch.py:49-54 (params dict has no realtime_start/realtime_end); docs/migration-plan.md:89-92; raw/fred/DEXUSEU/2026-09-06T12:50:15.866691Z.json (single realtime_start 2026-08-31 across 6,955 observations); warehouse query max 3 / min 1 distinct known_at per series; platform-spec.md:66-78, 156-188; docs/api-calls.md §1",
+      "estimate_points": 5,
+      "labels": [
+        "bitemporal",
+        "spec-gap",
+        "correctness"
+      ]
+    },
+    {
+      "name": "Settle the known_at type decision (date vs timestamptz) and record it",
+      "module": "Bitemporal Vintage Fidelity",
+      "type": "task",
+      "priority": "medium",
+      "state_group": "backlog",
+      "description_markdown": "Spec §21 lists `known_at` as `date` vs `timestamptz` as an unresolved decision, recommending `timestamptz` now to avoid a migration if market data ever arrives. The code has silently chosen: all three staging models cast to `date` (`coalesce((o ->> 'realtime_start')::date, fetched_at::date)` and `fetched_at::date`), and the API types `known_at` as `date | None`.\n\n**Acceptance criteria**\n- A recorded decision with the reasoning, added to the open-decisions section of `platform-spec.md` §21 (or a decision record).\n- If `date` is kept: state explicitly that a same-day second revision is collapsed by the dedup in `int_macro__observations_unioned.sql:19-22` and is therefore invisible, and confirm that is acceptable.\n- If `timestamptz` is chosen: the change lands with the ALFRED work in one migration, plus staging casts and the API model.\n- Either way the invariant wording (§22.5.2) is reconciled with the chosen type.",
+      "evidence": "platform-spec.md:805-810 (§21 open decisions); dbt/models/staging/stg_fred__observations.sql:32; stg_ecb__observations.sql:31; stg_bundesbank__observations.sql:31; api/main.py:64; dbt/models/intermediate/int_macro__observations_unioned.sql:12-25",
+      "estimate_points": 2,
+      "labels": [
+        "bitemporal",
+        "docs",
+        "spec-gap"
+      ]
+    },
+    {
+      "name": "Apply the spec §6 insert-only-on-change rule to ECB and Bundesbank vintages",
+      "module": "Bitemporal Vintage Fidelity",
+      "type": "bug",
+      "priority": "high",
+      "state_group": "unstarted",
+      "description_markdown": "Spec §6 prescribes the exact approximation for providers without vintages: set `known_at = fetched_at::date` and 'only insert a new row when the value differs from the last known one'. The staging models do the first half and skip the second, so every daily fetch re-stamps the entire history with a new `known_at` even when nothing changed. This fabricates revision history out of fetch events and is the main driver of fact-table growth.\n\n**Acceptance criteria**\n- Staging (or an intermediate no-change filter) emits an ECB/Bundesbank row only when the value differs from the previously known value for that `(series_id, obs_date)`, or when no prior row exists.\n- A repeated fetch with identical bytes produces zero new fact rows for those sources (verify by running the pipeline twice and diffing `count(*)` in `marts.fct_macro_observation`).\n- A test covers both directions: unchanged payload -> no new vintage; changed value -> exactly one new vintage dated `fetched_at::date`.\n- FRED is explicitly exempt from the rule, since it has genuine vintages.",
+      "evidence": "platform-spec.md:181-184; dbt/models/staging/stg_ecb__observations.sql:31; dbt/models/staging/stg_bundesbank__observations.sql:31; dbt/models/intermediate/int_macro__observations_unioned.sql:4-25 (no value-difference filter)",
+      "estimate_points": 3,
+      "labels": [
+        "bitemporal",
+        "correctness",
+        "dbt"
+      ]
+    },
+    {
+      "name": "Add a vintage/as-of regression test proving point-in-time retrieval",
+      "module": "Bitemporal Vintage Fidelity",
+      "type": "task",
+      "priority": "medium",
+      "state_group": "backlog",
+      "description_markdown": "Spec §6 defines two consumption patterns (latest view and as-of query) and §10 exposes `as_of` on the API, implemented in `api/main.py:127-138` with `DISTINCT ON ... WHERE known_at <= :as_of ORDER BY known_at DESC`. Nothing tests it, and with `min(distinct known_at) = 1` the behaviour is currently unexercised.\n\n**Acceptance criteria**\n- A dbt or pytest test seeds at least two vintages for one `(series_id, obs_date)` and asserts the as-of query returns the older value while the latest view returns the newer one.\n- A singular dbt test asserts every `(series_id, obs_date)` in `fct_macro_observation` has exactly one `is_latest = true` row.\n- The API test asserts `?as_of=` older than the first vintage returns an empty `data` array with `meta.as_of` echoing the request.\n- Runs in CI without live providers.",
+      "evidence": "platform-spec.md:174-184; api/main.py:125-149; dbt/models/intermediate/int_macro__observations_unioned.sql:27-38; warehouse query: max 3 / min 1 distinct known_at per series; no test in dbt/tests/ or tests/",
+      "estimate_points": 3,
+      "labels": [
+        "bitemporal",
+        "data-quality",
+        "spec-gap"
+      ]
+    },
+    {
+      "name": "Use payload_sha256 to skip downstream work for byte-identical fetches",
+      "module": "Warehouse Scale & Incremental Rebuild",
+      "type": "feature",
+      "priority": "high",
+      "state_group": "unstarted",
+      "description_markdown": "Spec §5 introduces `payload_sha256` specifically to 'enable skipping downstream work when a fetch is byte-identical to the previous one — a cheap and reliable change-detection mechanism', and `sql/001_init.sh:50-51` even creates an index on it. The column is written by `ingest/load.py` and then never read: the only other reference in the dbt tree is a prose description in `sources.yml:11`. Every build therefore re-processes unchanged payloads.\n\n**Acceptance criteria**\n- Staging (or a dbt incremental predicate) selects only fetch events whose `payload_sha256` differs from the previous fetch for that `(source, resource)`, while still retaining the raw rows for audit.\n- A second consecutive pipeline run with unchanged upstream data performs no mart rewrite for those series and the build time is measurably lower.\n- The `raw.source_fetch` index on `payload_sha256` is used by the query (verify with EXPLAIN).\n- Failed fetches (null payload) are handled explicitly and never treated as 'unchanged'.",
+      "evidence": "platform-spec.md:144-145; sql/001_init.sh:45, 50-51; ingest/load.py:49-50, 106; grep for payload_sha256 outside sql/ and ingest/ matches only dbt/models/staging/sources.yml:11 (prose)",
+      "estimate_points": 5,
+      "labels": [
+        "spec-gap",
+        "performance",
+        "dbt"
+      ]
+    },
+    {
+      "name": "Bound the staging fan-out to the newest payload per (source, resource)",
+      "module": "Warehouse Scale & Incremental Rebuild",
+      "type": "bug",
+      "priority": "high",
+      "state_group": "unstarted",
+      "description_markdown": "Each staging model reads every fetch event ever landed (`where source = 'fred' and payload is not null`) and explodes its full observation array, so the intermediate union scales with (number of fetches) x (observations per fetch) rather than with the data itself. With 275 raw fetch events for 110 series the warehouse already holds 745,450 fact rows and 471,453 latest rows; a daily schedule would add a complete history re-explosion per day on top of that, and every upstream byte of history is a full-history payload.\n\n**Acceptance criteria**\n- Staging selects only the fetch events needed to reconstruct current state — at minimum the newest payload per `(source, resource)`, plus older payloads only when a genuine vintage differs.\n- Row counts are documented with a ceiling as an explicit test: a repeated run must not multiply `marts.fct_macro_observation` by the number of fetches.\n- `int_macro__observations_unioned.sql`'s dedup remains necessary for genuine vintages and is not relied on to absorb redundant re-statement of unchanged history.\n- Before/after row counts and build times recorded in the PR.",
+      "evidence": "dbt/models/staging/stg_fred__observations.sql:6-15 (and the ECB/Bundesbank equivalents at :6-14); dbt/models/intermediate/int_macro__observations_unioned.sql:4-10; warehouse counts raw.source_fetch = 275 rows, marts.fct_macro_observation = 745,450, marts.fct_macro_observation_latest = 471,453",
+      "estimate_points": 5,
+      "labels": [
+        "performance",
+        "correctness",
+        "dbt"
+      ]
+    },
+    {
+      "name": "Incrementalize or partition the fact and transform marts",
+      "module": "Warehouse Scale & Incremental Rebuild",
+      "type": "task",
+      "priority": "high",
+      "state_group": "backlog",
+      "description_markdown": "Spec §9 chose full-refresh marts because 'at this data volume, full refresh of marts on every run is simpler than incremental logic and costs nothing', with an explicit revisit trigger: 'Revisit only when a build exceeds a minute.' Measured volume is now 745,450 fact rows, 806,952 grain rows, 806,952 period-metric rows and 5,475,118 transform rows, all materialized as tables and rebuilt in full on every `dbt build` (dbt_project.yml:24-25). The trigger has plausibly been crossed.\n\n**Acceptance criteria**\n- Per-model build times captured in Dagster metadata (or a CI artefact) for a full build and recorded in the issue.\n- A decision recorded per mart: keep full refresh (with the measured number and the reason), make incremental with a correct unique key, or partition.\n- `fct_macro_series_transforms` is the priority target given it is 73% of all mart rows.\n- If incremental is chosen, a full-refresh parity test asserts incremental and full builds agree on a sample of series.",
+      "evidence": "platform-spec.md:292-294; dbt/dbt_project.yml:23-25 (+materialized: table); warehouse counts fct_macro_observation 745,450 / grains 806,952 / period_metrics 806,952 / transforms 5,475,118; README.md:114-134",
+      "estimate_points": 8,
+      "labels": [
+        "performance",
+        "dbt",
+        "tech-debt"
+      ]
+    },
+    {
+      "name": "Make dbt/seeds/series_catalog.csv the single registry and have ingest read it",
+      "module": "Series Catalog Single Source of Truth",
+      "type": "task",
+      "priority": "high",
+      "state_group": "unstarted",
+      "description_markdown": "Spec §7 says the catalog 'is configuration, not data — it belongs in git ... adding a series is a one-line diff rather than a code change'. The registry currently lives twice: 110 `Series(...)` entries in `ingest/config.py:81-216` and 110 rows in `dbt/seeds/series_catalog.csv`. They agree today (verified: no id present in one and absent from the other), which is luck maintained by hand — and `docs/api-calls.md` contradicts itself in adjacent paragraphs about which is authoritative ('the series registry in ingest/config.py is the single source of truth' vs 'will move from ingest/config.py to dbt/seeds/series_catalog.csv').\n\n**Acceptance criteria**\n- One authoritative definition; ingest loads the seed (or a generated artefact produced from it) rather than a parallel Python list.\n- Optional fields the seed lacks but ingest needs (`role`, `provider_key`) are either added to the seed or derived by a documented rule.\n- Adding a series requires exactly one edit in one file, proven by a walkthrough in the PR.\n- `docs/api-calls.md` and `ingest/config.py`'s docstring both point to the single source.",
+      "evidence": "platform-spec.md:192-215 (§7); ingest/config.py:5-6 ('moves to a dbt seed as part of M2'), :81-216; dbt/seeds/series_catalog.csv (110 data rows); docs/api-calls.md:9-13 (self-contradiction); verified id sets match today",
+      "estimate_points": 5,
+      "labels": [
+        "spec-gap",
+        "dbt",
+        "tech-debt"
+      ]
+    },
+    {
+      "name": "Serve the /ops catalog from marts.dim_series instead of importing ingest.config.SERIES",
+      "module": "Series Catalog Single Source of Truth",
+      "type": "bug",
+      "priority": "medium",
+      "state_group": "unstarted",
+      "description_markdown": "`api/ops.py` builds the Data Ops freshness table by iterating the ingest package's Python registry (`from ingest.config import SERIES`) and left-joining warehouse freshness onto it, which bypasses the marts-only read contract of spec §4/§22.5.4 and makes the API deployment depend on the ingest package being importable and in sync. It also discards data it already has: `unit` is hardcoded to `\"\"` even though `marts.dim_series.unit` is selected, and `triggerable` is hardcoded `true` for every series.\n\n**Acceptance criteria**\n- The `/ops/series` payload is driven by `marts.dim_series` (with a warehouse-only join for freshness), so it still returns all 110 series after the registry moves to the seed.\n- `unit`, `country`, `category` are populated from the warehouse rather than blanked.\n- A test asserts `/ops/series` returns 110 rows with non-empty units and that no ingest import remains in `api/`.\n- `api/`'s only warehouse dependency stays `platform_reader` on marts/meta.",
+      "evidence": "api/ops.py:33 (import of SERIES), :79-128 (iteration + `\"unit\": \"\"` at :118 and `\"triggerable\": True` at :125); dbt/models/marts/dim_series.sql:4; platform-spec.md:104-112, invariant §22.5.4 (line 931)",
+      "estimate_points": 3,
+      "labels": [
+        "api",
+        "spec-gap",
+        "correctness"
+      ]
+    },
+    {
+      "name": "Add a consistency test between the seed and the ingest registry during the transition",
+      "module": "Series Catalog Single Source of Truth",
+      "type": "task",
+      "priority": "medium",
+      "state_group": "backlog",
+      "description_markdown": "The two registries agree today only because a human kept them in step. Until the single-source item lands, nothing detects divergence: the seed's own tests (`unique`, `not_null`, `accepted_values` on frequency) say nothing about ingestion, and no test compares the two lists.\n\n**Acceptance criteria**\n- A CI test asserts the set of `series_id`s in `dbt/seeds/series_catalog.csv` equals the set in `ingest/config.py`, and that `source` and `frequency` agree per id.\n- The test fails with a diff listing the mismatched ids.\n- The test is deleted by the single-source ticket, and its deletion is part of that ticket's acceptance criteria so it cannot be forgotten.",
+      "evidence": "dbt/seeds/series_catalog.csv vs ingest/config.py:81-216 (verified equal today); dbt/seeds/properties.yml:11-20 (existing seed tests do not cross-check ingest); no test in tests/ or dbt/tests/ compares them",
+      "estimate_points": 2,
+      "labels": [
+        "data-quality",
+        "ci-cd",
+        "dbt"
+      ]
+    },
+    {
+      "name": "Remove the dead PENDING_SERIES placeholder from the ingest registry",
+      "module": "Series Catalog Single Source of Truth",
+      "type": "task",
+      "priority": "low",
+      "state_group": "backlog",
+      "description_markdown": "`ingest/config.py:218` declares `PENDING_SERIES: list[Series] = []` — an empty placeholder with no reader and no comment. It reads like a queue of intended series, which invites an agent to append to it and expect ingestion to happen.\n\n**Acceptance criteria**\n- The binding is removed, or it is turned into a documented, tested mechanism with a stated difference from `SERIES`.\n- If removed, a short note in the catalog doc says how to stage a not-yet-enabled series (e.g. an `active` column in the seed, which already exists).",
+      "evidence": "ingest/config.py:218 (PENDING_SERIES: list[Series] = []); no other reference in the repo; dbt/seeds/series_catalog.csv already has an `active` column",
+      "estimate_points": 1,
+      "labels": [
+        "tech-debt",
+        "dbt"
+      ]
+    },
+    {
+      "name": "Implement the four spec §8 Dagster asset checks (freshness, volume, nulls, revision anomaly)",
+      "module": "Data Quality & Asset Checks",
+      "type": "feature",
+      "priority": "high",
+      "state_group": "unstarted",
+      "description_markdown": "Spec §8 requires `@asset_check` definitions run after materialization: freshness (no active series' latest obs_date older than 2x its expected frequency interval), volume (row count did not drop versus the previous run), nulls (no nulls in `fct_macro_observation.value`) and revision anomaly (no value revised by more than N standard deviations) — and they must warn, not fail, the run, 'because you want the data to land and the problem to be visible, not the pipeline to halt.' There is no `@asset_check` in the repo; `orchestration/definitions.py` passes no `asset_checks`, and the 97 rows in `asset_check_executions` are all dbt-test-derived checks created automatically by dagster-dbt.\n\n**Acceptance criteria**\n- Four checks registered, attached to the right assets, each with a severity of WARN rather than ERROR.\n- Each check's metadata includes the observed value, the threshold and the offending series list (truncated).\n- A check that flags is visible in the Dagster UI and in the run metadata; the run still succeeds.\n- Explicitly documented as non-duplicative of Elementary, following the division-of-labour table in spec §9.\n- Demonstrated against the known ECB HICP staleness: the freshness check must flag it.",
+      "evidence": "platform-spec.md:253-262, 340-348; grep for `@asset_check`/`AssetCheckResult` across *.py -> no matches; orchestration/definitions.py:11-18; Dagster query `SELECT DISTINCT asset_key, check_name FROM asset_check_executions` returns only dbt-test names",
+      "estimate_points": 8,
+      "labels": [
+        "spec-gap",
+        "data-quality",
+        "observability"
+      ]
+    },
+    {
+      "name": "Diagnose and fix the 291-day-stale ECB HICP series",
+      "module": "Data Quality & Asset Checks",
+      "type": "bug",
+      "priority": "urgent",
+      "state_group": "backlog",
+      "description_markdown": "Two euro-area series that the platform exists to track have not updated since 2025-12-01: `ECB_HICP` and `ECB_HICP_CORE` report `max(obs_date) = 2025-12-01`, i.e. 291 days old as of 2026-09-18, while every other series is at most ~79 days old (US monthly) and the daily series are current to 2026-09-17. Meanwhile `raw/ecb/ECB_HICP/` holds exactly one fetch file (2026-09-06), and the failure is invisible because nothing checks freshness.\n\n**Acceptance criteria**\n- Root cause identified and stated: wrong SDMX key, a discontinued dataflow, a period-format change the ECB parser misses, or a stale fetch that silently returned old periods — the last case should be checked against the byte-faithful `payload_raw` rather than the parsed payload.\n- If the key or flow changed, update `ingest/config.py:190-193`; if parsing is at fault, fix `ingest/ecb` parsing and add the response shape as a parser test fixture.\n- After the fix, `ECB_HICP` shows the current published period in `marts.fct_macro_observation_latest`.\n- The freshness asset check from the companion ticket would have caught this; tie the two together in the PR.",
+      "evidence": "warehouse query: ECB_HICP, ECB_HICP_CORE last_obs_date 2025-12-01, age_days 291 (next worst 170); raw/ecb/ECB_HICP/ contains a single 2026-09-06T12:49:42.254547Z.csv; ingest/config.py:190-193 (provider_key ICP/M.U2.N.000000.4.ANR); no freshness check exists",
+      "estimate_points": 3,
+      "labels": [
+        "correctness",
+        "data-quality",
+        "urgent-data-fix"
+      ]
+    },
+    {
+      "name": "Add dbt source freshness configuration on raw.source_fetch",
+      "module": "Data Quality & Asset Checks",
+      "type": "task",
+      "priority": "medium",
+      "state_group": "backlog",
+      "description_markdown": "Spec §9's test list ends with 'dbt source freshness on `raw.source_fetch`'. `dbt/models/staging/sources.yml` declares the source with a description and no `freshness` block and no `loaded_at_field`, so `dbt source freshness` has nothing to evaluate.\n\n**Acceptance criteria**\n- `loaded_at_field: fetched_at` and a warn/error freshness threshold per source that reflects expected cadence (daily sources tighter than monthly).\n- If a single threshold is too blunt for a mixed catalogue, use per-source freshness via three dbt sources (`raw_fred`, `raw_ecb`, `raw_bundesbank`) or a config-level override, and document the choice.\n- Source freshness results are visible in Elementary alongside the rest of the test history.",
+      "evidence": "platform-spec.md:310; dbt/models/staging/sources.yml (whole file has no freshness/loaded_at_field); sql/001_init.sh:40 (fetched_at timestamptz exists)",
+      "estimate_points": 2,
+      "labels": [
+        "spec-gap",
+        "data-quality",
+        "dbt"
+      ]
+    },
+    {
+      "name": "Add the missing relationships test from fct_macro_observation.series_id to dim_series",
+      "module": "Data Quality & Asset Checks",
+      "type": "task",
+      "priority": "medium",
+      "state_group": "backlog",
+      "description_markdown": "Spec §9 requires a `relationships` test from `fct_macro_observation.series_id` to `dim_series`. The three newer marts have relationships tests, but the core bitemporal fact does not: `dbt/models/marts/schema.yml:4-17` gives it only unique/not_null on `observation_key` and not_null on the key columns. A series present in raw but absent from the catalog therefore produces orphan facts silently.\n\n**Acceptance criteria**\n- `relationships` test added on `fct_macro_observation.series_id` (and on `fct_macro_observation_latest.series_id`, which is equally unprotected).\n- The test passes on the current warehouse; if it fails, the orphaned series are triaged and the finding recorded.\n- Consider a `not_null` test on `dim_series.source` to make the catalog complete for the API.",
+      "evidence": "platform-spec.md:304-310; dbt/models/marts/schema.yml:4-17 (no relationships test) vs :48-63 (grains has one); warehouse has 110 distinct series in both dim_series and the fact",
+      "estimate_points": 1,
+      "labels": [
+        "spec-gap",
+        "data-quality",
+        "dbt"
+      ]
+    },
+    {
+      "name": "Apply Elementary anomaly tests to fct_macro_observation now that history exists",
+      "module": "Data Quality & Asset Checks",
+      "type": "feature",
+      "priority": "medium",
+      "state_group": "backlog",
+      "description_markdown": "Spec §9 introduces Elementary 'in from M2' and says its anomaly-detection tests (volume, freshness, column distribution, schema change) should be applied to `fct_macro_observation` 'once about a month of history exists; before that there is no baseline to detect anomalies against.' Elementary is installed and uploading artefacts, but no anomaly test is configured anywhere in `dbt/models`, so the entire anomaly capability is unused.\n\n**Acceptance criteria**\n- Elementary anomaly tests configured for at least volume and freshness on `fct_macro_observation`, plus schema-change monitoring on the marts.\n- `edr monitor` (or the equivalent Dagster step) is scheduled so anomalies produce a signal rather than a table nobody reads.\n- A baseline period is set long enough to avoid false positives; the chosen window and sensitivity documented in the model YAML.\n- Elementary test history is visible in the report and in the `elementary` schema tables after a run.",
+      "evidence": "platform-spec.md:312-338, 340-348; grep for `elementary.volume_anomalies`/`elementary` in dbt/models -> none (only dbt_project.yml:26-27,39-50 and profiles.yml:16-27); warehouse holds ~13 months of daily history",
+      "estimate_points": 3,
+      "labels": [
+        "spec-gap",
+        "data-quality",
+        "observability"
+      ]
+    },
+    {
+      "name": "Stop running the Elementary report as a long-lived service",
+      "module": "Data Quality & Asset Checks",
+      "type": "task",
+      "priority": "medium",
+      "state_group": "backlog",
+      "description_markdown": "Spec §9 is explicit: 'Elementary's report generation (`edr report`) is a CLI invocation from a Dagster op after the dbt build. Do not run it as a long-lived service.' The stack does the opposite — the `elementary-report` container regenerates the report in a `while true; do sleep 1800; generate; done` loop and serves it with `http.server` on 0.0.0.0:8081.\n\n**Acceptance criteria**\n- Report generation moves into the Dagster job (an op after the dbt build, or an `@asset` producing the HTML), so the report always reflects the run that just finished.\n- The container becomes a dumb static file server of the generated artefact (or is dropped entirely in favour of the tailnet static-host pattern from spec §15a).\n- Failure to generate the report does not fail the pipeline run (matching the 'warn, do not halt' principle).\n- The 30-minute refresh loop and its duplicated `edr` invocation are removed.",
+      "evidence": "platform-spec.md:349-350; scripts/elementary_serve.sh:10-27 (generate + background refresh loop); docker-compose.yml:152-163; agents/notes.md:98-103",
+      "estimate_points": 3,
+      "labels": [
+        "spec-gap",
+        "observability",
+        "tech-debt"
+      ]
+    },
+    {
+      "name": "Mark forward-filled observations in the day grain mart",
+      "module": "Data Quality & Asset Checks",
+      "type": "task",
+      "priority": "medium",
+      "state_group": "backlog",
+      "description_markdown": "`fct_macro_series_grains` calendar-fills the day grain for daily series and carries the last observation forward across gaps (weekends, holidays, missing prints) using a `count(value) over` grouping plus `first_value`. The output is `(series_id, grain, period_date, value)` with no flag distinguishing an observed value from a carried-forward one, so a consumer (Signal Lab, an API client, a chart) cannot tell a genuine flat print from a filled holiday.\n\n**Acceptance criteria**\n- An `is_filled` (or `source_obs_date`) column is added to the day grain, and to the documented schema in `dbt/models/marts/schema.yml:38-63`.\n- README's description of the day grain states the forward-fill semantics explicitly rather than only 'calendar-filled'.\n- A test asserts filled rows carry a `source_obs_date` different from `period_date`, and observed rows carry equality.\n- Consumers that must not use filled values (e.g. volatility estimation) are audited and either filter on the flag or document that they tolerate it.",
+      "evidence": "dbt/models/intermediate/int_macro__grains_base.sql:54-73 (count(value) group + first_value carry-forward); README.md:120-122; dbt/models/marts/schema.yml:38-47 describes the mart without a filled flag",
+      "estimate_points": 3,
+      "labels": [
+        "data-quality",
+        "correctness",
+        "dbt"
+      ]
+    },
+    {
+      "name": "Resolve the index_100 base mismatch between the mart and its documentation",
+      "module": "Data Quality & Asset Checks",
+      "type": "bug",
+      "priority": "medium",
+      "state_group": "backlog",
+      "description_markdown": "The transforms mart documents `index_100` as 'value / first value of the series * 100 (base = inception)' in its own header and README calls it 'base = series inception', but the window is `partition by series_id, grain` and the implementation uses `first_value(value) over w`, so the base is the first value *of each grain*. The same series therefore has up to five different index bases (day, week, month, quarter, year) while every document says one.\n\n**Acceptance criteria**\n- Either change `first_val` to be computed over the series' full history independent of grain, or update the mart header, `schema.yml:65-71` and `README.md:125-126` to state the per-grain base. A decision, not a silent drift.\n- A dbt test asserts the chosen property (e.g. for every `(series_id, grain)` the row with the minimum `period_date` has `index_100 = 100`).\n- If per-grain is intended, verify against a real series that the day and year bases are documented where a user will look.",
+      "evidence": "dbt/models/marts/fct_macro_series_transforms.sql:12 (comment: base = inception), :31-37 (window partitions by series_id, grain), :74-77 (value / first_val * 100); README.md:125-126; dbt/models/marts/schema.yml:66-71",
+      "estimate_points": 2,
+      "labels": [
+        "dbt",
+        "docs",
+        "correctness"
+      ]
+    },
+    {
+      "name": "Add tests for the documented semantics of the grain, transform and period-metric marts",
+      "module": "Data Quality & Asset Checks",
+      "type": "task",
+      "priority": "medium",
+      "state_group": "backlog",
+      "description_markdown": "Three marts carrying 7.1M rows rest on claims that only one singular test partly covers (`assert_grain_never_finer_than_native`). Untested claims include: coarser grains hold the last observation in the bucket; `log_level`/`log_return` exist only for positive series; `zscore` uses full history (declared at `fct_macro_series_transforms.sql:13` and `schema.yml:70`), which means historical values mutate as new data lands — a direct tension with the point-in-time promise of spec §1.2 and §6; and the period metrics use calendar-date joins, which are NULL at series inception rather than zero (measured: `yoy_pct` is NULL on ~5% of rows, and NULL for every quarter/year grain).\n\n**Acceptance criteria**\n- Singular tests for: last-in-bucket value correctness on a fixture series; log transforms absent for non-positive values; `index_100 = 100` at the base row for the chosen semantics; period metrics NULL versus 0 behaviour asserted explicitly rather than assumed.\n- The look-ahead nature of full-history `zscore` is either accepted and labelled in the API/docs, or replaced with a point-in-time variant that uses only data available at `period_date`.\n- Tests use small fixture seeds, not the 110-series warehouse, so they run in CI.",
+      "evidence": "dbt/models/marts/fct_macro_series_transforms.sql:12-13, 36-37, 74-84; fct_macro_series_period_metrics.sql:1-20; dbt/models/marts/schema.yml:65-96; dbt/tests/ contains only assert_grain_never_finer_than_native.sql; warehouse: yoy_pct NULL on 34k of 663k day rows, 0 for all quarter/year rows",
+      "estimate_points": 3,
+      "labels": [
+        "dbt",
+        "data-quality"
+      ]
+    },
+    {
+      "name": "Add CORS middleware with an explicit origin allowlist",
+      "module": "Public API Contract (spec §10)",
+      "type": "feature",
+      "priority": "high",
+      "state_group": "unstarted",
+      "description_markdown": "Spec §10 requires 'CORS allowlist naming your site's domain explicitly — never `*`'. There is no `CORSMiddleware` and no `add_middleware` call anywhere in the API, and a runtime preflight confirms it: `OPTIONS /v1/series` with an `Origin` header and `Access-Control-Request-Method: GET` returns HTTP 405. Any browser-based consumer (the Astro site of spec §11, the Germany static frontend) is blocked.\n\n**Acceptance criteria**\n- `CORSMiddleware` added with origins read from an `API_CORS_ORIGINS` environment variable (comma-separated, per spec §13), defaulting to an empty/loopback-only list rather than `*`.\n- Preflight returns 200 with the expected `Access-Control-Allow-*` headers for an allowlisted origin and no CORS headers for a non-allowlisted one.\n- `smoke.sh` gains a preflight assertion.\n- `.env.example` documents the variable.",
+      "evidence": "platform-spec.md:396-397, 508-516; grep for CORS/CORSMiddleware/add_middleware across *.py -> no matches; runtime: `curl -X OPTIONS .../v1/series -H 'Origin: ...'` -> 405; .env.example has no API_CORS_ORIGINS key",
+      "estimate_points": 2,
+      "labels": [
+        "spec-gap",
+        "api",
+        "security"
+      ]
+    },
+    {
+      "name": "Add Cache-Control to observation endpoints",
+      "module": "Public API Contract (spec §10)",
+      "type": "feature",
+      "priority": "high",
+      "state_group": "unstarted",
+      "description_markdown": "Spec §10 requires `Cache-Control: public, max-age=3600` on observation endpoints because 'the data changes once a day'. A runtime response header dump for `/v1/series/DEXUSEU/observations` shows only `content-type: application/json` — no caching directive at all, so every chart render of the public site hits Postgres through the API.\n\n**Acceptance criteria**\n- Observation routes set `Cache-Control: public, max-age=3600` (and set it on the multi-series route too).\n- Metadata-only routes (catalog, freshness) either get the same header or a documented shorter TTL, with the reason stated.\n- A test asserts the header value verbatim on each observation route.\n- Because the data changes only after the 06:00 build, consider adding a weak `ETag` derived from `warehouse_build` and honouring `If-None-Match` with 304; document whether that is in or out of scope.",
+      "evidence": "platform-spec.md:398-399; runtime `curl -D -` on /v1/series/DEXUSEU/observations shows only content-type; api/main.py:203-235 (no Response/headers argument on any route)",
+      "estimate_points": 1,
+      "labels": [
+        "spec-gap",
+        "api",
+        "performance"
+      ]
+    },
+    {
+      "name": "Enforce the max page size on observation endpoints with HTTP 400",
+      "module": "Public API Contract (spec §10)",
+      "type": "bug",
+      "priority": "high",
+      "state_group": "unstarted",
+      "description_markdown": "Spec §10 fixes a page size of max 1000 rows and requires a `400`, not silent truncation. `/v1/series` honours `MAX_PAGE_SIZE` via a bounded Query parameter, but neither observation route has any page-size concept: `api/main.py:219-235` (`/v1/observations`, up to 20 series x 50 years) and `:203-216` (single series) return every matching row. A runtime probe with `?limit=999999` returns HTTP 200, because FastAPI ignores the unknown parameter — a client asking for a million rows is neither bounded nor told.\n\n**Acceptance criteria**\n- Page size is an explicit, bounded parameter on both observation endpoints (`limit`, and `offset` or a cursor) with a hard maximum of 1000 rows.\n- A request above the maximum returns 400 with a message naming the limit; a request below it is honoured.\n- The multi-series endpoint's real risk (20 series x 50 years) is covered by a test asserting the response never exceeds the cap.\n- `docs/api-calls.md` and the README endpoint list document the parameter and the default.",
+      "evidence": "platform-spec.md:401-410; api/main.py:26, 174 (MAX_PAGE_SIZE applied only to /v1/series), :203-235 (no limit/offset); runtime `?limit=999999` -> 200",
+      "estimate_points": 2,
+      "labels": [
+        "spec-gap",
+        "api",
+        "api-bounds"
+      ]
+    },
+    {
+      "name": "Give the API a pooled connection strategy instead of one connection per request",
+      "module": "Public API Contract (spec §10)",
+      "type": "task",
+      "priority": "medium",
+      "state_group": "backlog",
+      "description_markdown": "Spec §10 asks for 'Async SQLAlchemy or asyncpg with a connection pool sized 5-10'. Today every endpoint calls `_connect()`, which opens and closes a fresh `psycopg.connect`, and `api/ops.py` has a second copy of the same helper. Under the multi-series chart workload the platform expects (spec §10: charts need several series per request), that is one TCP + auth handshake per request with no reuse.\n\n**Acceptance criteria**\n- A single shared pool (psycopg_pool or asyncpg, sync or async) created at application startup and closed at shutdown.\n- All endpoints, including the `/ops` router, use the pool; the duplicated `_connect` in `api/ops.py:67-71` is deleted.\n- Pool size is configurable and defaults within the spec's 5-10 range; a test asserts exhaustion behaviour returns 503 rather than hanging forever.\n- `/ready` reflects pool health.",
+      "evidence": "platform-spec.md:394-395; api/main.py:85-89 (per-call psycopg.connect), :187, :195, :211, :232, :246; api/ops.py:67-71 (duplicate helper); dashboard/data.py:24-32 (third copy)",
+      "estimate_points": 3,
+      "labels": [
+        "spec-gap",
+        "api",
+        "performance"
+      ]
+    },
+    {
+      "name": "Report the real dbt build time in meta.warehouse_build",
+      "module": "Public API Contract (spec §10)",
+      "type": "bug",
+      "priority": "medium",
+      "state_group": "unstarted",
+      "description_markdown": "Spec §10 explains that `warehouse_build` is 'not decoration. When a chart looks wrong, the first question is always whether the data is stale, and this answers it without opening Dagster.' The implementation does not answer it: `_warehouse_build` returns `max(known_at)` from the latest view and the docstring calls it 'a proxy for the dbt build time'. For FRED that value is the source's vintage date, not our build time at all — the live response shows `warehouse_build` = `2026-09-17` while `generated_at` is 2026-09-18.\n\n**Acceptance criteria**\n- The dbt build writes its own timestamp to a queryable place (a `meta` table row, or a dbt `run_started_at`-derived artefact), and the API reads that.\n- `warehouse_build` is distinguishable from `as_of` and from the newest observation date; all three appear in `meta` with clear names.\n- A test asserts that after a build, `warehouse_build` is within seconds of the build's own recorded start time.\n- `/v1/meta/freshness` gains a top-level build timestamp so one call answers 'is this fresh'.",
+      "evidence": "platform-spec.md:373-390; api/main.py:99-104 (docstring: 'proxy for the dbt build time'); runtime response meta.warehouse_build = 2026-09-17 vs meta.generated_at 2026-09-18T11:06:45Z",
+      "estimate_points": 2,
+      "labels": [
+        "api",
+        "correctness",
+        "spec-gap"
+      ]
+    },
+    {
+      "name": "Build the country-level mart over the liveability seed and country series",
+      "module": "Country Scoring & Liveability API (spec §19)",
+      "type": "feature",
+      "priority": "medium",
+      "state_group": "backlog",
+      "description_markdown": "Spec §19 anticipates relocation scoring as 'a mart schema over country-level series plus a scoring module behind a POST /v1/score endpoint taking user preference weights' and asks that the sensitivity analysis live in FastAPI because it is computation. Today the score exists only as Python: `scripts/liveability_model.py` reads the seed CSV off disk, and `dashboard/liveability.py` embeds a duplicate CSV so the dashboard image needs no volume mount. `country_profile_mvp` is referenced by no dbt model at all, so the platform's most opinionated output is neither versioned in the warehouse nor reproducible by a build.\n\n**Acceptance criteria**\n- A country dimension/mart (e.g. `dim_country`, `fct_country_pillar_score`) built from `dbt/seeds/country_profile_mvp.csv` plus the country-level macro series already in marts.\n- The mart is materialized by the daily dbt build and readable by `platform_reader`.\n- Every numeric input traces to a column with a `source`/`confidence`/`verified_by` value, and the mart exposes those provenance fields rather than dropping them.\n- The seed is transformed in dbt, not read from the filesystem by any consumer.",
+      "evidence": "platform-spec.md:760-763 (§19); dbt/models/marts has no country model; grep for `country_profile_mvp` in dbt/models -> none; scripts/liveability_model.py:296-297 (reads the CSV directly); dashboard/liveability.py:1-33 (embedded COUNTRY_CSV); dbt/seeds/country_profile_mvp.csv + properties.yml:22-43",
+      "estimate_points": 8,
+      "labels": [
+        "spec-gap",
+        "liveability",
+        "dbt"
+      ]
+    },
+    {
+      "name": "Add the POST /v1/score endpoint with user preference weights",
+      "module": "Country Scoring & Liveability API (spec §19)",
+      "type": "feature",
+      "priority": "medium",
+      "state_group": "backlog",
+      "description_markdown": "Spec §19 specifies `POST /v1/score` taking user preference weights, with the sensitivity analysis performed in FastAPI rather than in a semantic layer. No such route exists: the only POST routes in the API are the owner-only `/ops/refresh`, `/ops/refresh-all` and `/ops/runs/{id}/terminate`, so scoring a set of weights requires running Streamlit locally.\n\n**Acceptance criteria**\n- `POST /v1/score` accepts a validated Pydantic request (origin country, candidate countries, weights, horizon, children, income) and returns ranked results with per-country components and the weights echoed, in the standard `{data, meta}` envelope.\n- Bounds are enforced in Pydantic like the existing query bounds: maximum candidate countries, weight sum normalisation rule, and 400 on violation.\n- The endpoint reads only marts as `platform_reader`.\n- Score inputs and outputs are deterministic given the same mart version, and `meta.warehouse_build` lets a caller detect a stale score.\n- OpenAPI docs describe every parameter, since this is the endpoint the spec intends third parties to compose with.",
+      "evidence": "platform-spec.md:762-763; api/ops.py:191, 215, 282 (only POST routes); api/main.py has no score route; no `score` reference in api/",
+      "estimate_points": 5,
+      "labels": [
+        "spec-gap",
+        "liveability",
+        "api"
+      ]
+    },
+    {
+      "name": "Collapse the duplicated liveability model into one canonical implementation",
+      "module": "Country Scoring & Liveability API (spec §19)",
+      "type": "task",
+      "priority": "high",
+      "state_group": "unstarted",
+      "description_markdown": "There are two copies of the scoring model: `scripts/liveability_model.py` (canonical, loads the seed via `load_countries(path)`) and `dashboard/liveability.py` (byte-equivalent logic plus an embedded 19-row `COUNTRY_CSV`, with `load_countries(csv_text)`). The dashboard file says 'Keep the two in sync when editing', and nothing enforces it. Worse, the 19 regression tests import the scripts copy, so the code the user actually sees in the dashboard is untested.\n\n**Acceptance criteria**\n- One implementation, imported by both the page and the tests (move it to a shared package or make the dashboard module import the canonical one).\n- If the embedded CSV must stay (dashboard build context is `./dashboard`), a test asserts it is byte-identical to `dbt/seeds/country_profile_mvp.csv` and fails loudly otherwise.\n- `tests/test_liveability_model.py` exercises the same object the page renders.\n- A drift can no longer be introduced by editing one file.",
+      "evidence": "dashboard/liveability.py:1-6 ('Keep the two in sync when editing'), :13-33 (embedded COUNTRY_CSV); scripts/liveability_model.py:296-297 (canonical loader); tests/test_liveability_model.py:16-18 (imports the scripts copy only); dashboard/Dockerfile build context ./dashboard (docker-compose.yml:82) explains why the copy exists",
+      "estimate_points": 3,
+      "labels": [
+        "liveability",
+        "tech-debt",
+        "correctness"
+      ]
+    },
+    {
+      "name": "Reconcile the liveability documentation against the seed and the model",
+      "module": "Country Scoring & Liveability API (spec §19)",
+      "type": "task",
+      "priority": "high",
+      "state_group": "backlog",
+      "description_markdown": "The liveability docs and the shipped seed disagree on the most basic parameters, which makes the feature's output unauditable. Specific contradictions: country counts are 45 (`docs/liveability-index-spec.md` §3), 15 (`docs/liveability-mvp.md:11,139`), 18-but-lists-19 (`docs/liveability-simulation-layer.md` §1) and 19 (seed and `tests/test_liveability_model.py:29`); child cost is '~6% DE, ~28% CH' in the MVP doc while the seed has DEU 0.100 and CHE 0.400; the tax matrix is described as 21 verified jurisdictions while the seed has 19; and `scripts/liveability_model.py:345` still prints a reference result of '+235k at 0 kids' that the worked example later corrected to +€305k.\n\n**Acceptance criteria**\n- One agreed country count and one agreed child-cost basis, recorded in the MVP doc and matching the seed exactly; every other doc either updated or explicitly marked superseded.\n- The 21-vs-19 jurisdiction difference explained (which two are excluded and why) or the seed extended.\n- Stale printed reference figures in `scripts/liveability_model.py` corrected to the worked example's numbers, and the worked example itself checked for internal consistency (its own counts of material changes vary between documents).\n- A docs test or checklist item that fails when a headline parameter in the MVP doc disagrees with the seed.",
+      "evidence": "docs/liveability-mvp.md:11, 49, 119, 127, 139; docs/liveability-index-spec.md:203, 212, 464; docs/liveability-simulation-layer.md §1; docs/liveability-worked-example-de-35.md:51, 58, 235, 243; dbt/seeds/country_profile_mvp.csv (DEU child_cost 0.100, CHE 0.400; 19 rows); scripts/liveability_model.py:345; docs/research/tax-regime-verification-notes.md:4",
+      "estimate_points": 3,
+      "labels": [
+        "liveability",
+        "docs",
+        "research"
+      ]
+    },
+    {
+      "name": "Replace the flat 5% exit-tax haircut with the documented rule or label it a proxy",
+      "module": "Country Scoring & Liveability API (spec §19)",
+      "type": "bug",
+      "priority": "medium",
+      "state_group": "backlog",
+      "description_markdown": "Both model copies apply exit tax as an unexplained flat haircut — `w -= 0.05 * w` when the country has an exit-tax flag and wealth exceeds the threshold — while the worked example specifies a real rule (€500k per fund threshold, 26.375% rate, a worked €77.7k case, and a Rückkehrregelung contingency). The result is that the model's answer for Germany, France, Norway and Poland — the countries where exit tax matters — rests on a number with no cited source and no relation to the researched rule.\n\n**Acceptance criteria**\n- Either implement the documented rule using the seed's `exit_tax_threshold_eur` and a rate column, or rename/annotate the parameter as a deliberate proxy with the reason and the sensitivity of the result to it.\n- A unit test pins the worked example's expected number for the DE-35 scenario.\n- The two model copies apply the same logic (see the de-duplication ticket).\n- `docs/liveability-mvp.md`'s score formula (`log(W(T)) + lambda*wellbeing - friction_once`) is either implemented or the doc corrected, since the current `recommend()` ranks on raw gain only.",
+      "evidence": "scripts/liveability_model.py:166-169 (`w -= 0.05 * w`); dashboard/liveability.py:200; docs/liveability-worked-example-de-35.md:121-146; docs/liveability-mvp.md:80; dbt/seeds/country_profile_mvp.csv exit_tax_threshold_eur column",
+      "estimate_points": 3,
+      "labels": [
+        "liveability",
+        "correctness",
+        "research"
+      ]
+    },
+    {
+      "name": "Wire or drop the unused country-profile fields",
+      "module": "Country Scoring & Liveability API (spec §19)",
+      "type": "task",
+      "priority": "medium",
+      "state_group": "backlog",
+      "description_markdown": "The seed carries 20 columns but several are loaded and never used: `english_ok` and `climate_risk` are declared and loaded but never read, `currency`/`currency_eur_peg` are loaded without an FX-drift term, and `quality_of_life` appears only in a hover string. The MVP doc's scoring formula explicitly includes a wellbeing term (`lambda * wellbeing`), so the data for it exists but the model does not use it.\n\n**Acceptance criteria**\n- Each currently-unused column is either consumed by the model (with a documented term, e.g. a wellbeing axis and an FX-drift adjustment) or removed from the seed to stop implying it matters.\n- If the wellbeing term is implemented, its weight is exposed as an input and the doc's 'one honest judgement call' framing is honoured.\n- The score breakdown shows each contributing term, so an omitted column is visible rather than implicit.",
+      "evidence": "dbt/seeds/country_profile_mvp.csv header (20 columns); scripts/liveability_model.py column consumption; dashboard/liveability.py:263 (quality_of_life only in a hover string); docs/liveability-mvp.md:80 (wellbeing term in the formula)",
+      "estimate_points": 3,
+      "labels": [
+        "liveability",
+        "tech-debt",
+        "docs"
+      ]
+    },
+    {
+      "name": "Enable the daily schedule and prove seven consecutive unattended green runs",
+      "module": "Unattended Daily Pipeline (M5)",
+      "type": "feature",
+      "priority": "urgent",
+      "state_group": "unstarted",
+      "description_markdown": "The schedule exists (`macro_pipeline_schedule` / `daily_schedule`, 06:00 Europe/Berlin, `AssetSelection.all()`) but has never been turned on: the Dagster `instigators` table is empty, and the `runs` table contains only 10 manually-triggered runs (6 SUCCESS, 4 FAILURE) between 2026-09-05 and 2026-09-17. Corroborating evidence from the data side: `raw.source_fetch` holds 275 fetch events for 110 series (~2.5 each) and the maximum distinct `known_at` per series is 3. Spec §20 calls M5 'the milestone people skip' and defines done as seven consecutive green runs with no manual intervention.\n\n**Acceptance criteria**\n- The schedule is started in the running Dagster instance and its status verifiable in the UI; a restart of the stack leaves it started (or a documented re-enable step exists).\n- Seven consecutive scheduled runs succeed, with run ids and timestamps recorded as an artefact.\n- The resulting growth in `raw.source_fetch` is visible: each series gains one fetch event per day.\n- Failures during the week are triaged and either fixed or filed, not silently retried away.\n- The spec §1.5 gate is respected: nothing moves to k3s until this week has passed.",
+      "evidence": "orchestration/schedules.py:12-17; orchestration/definitions.py:17-18; Dagster DB: `SELECT count(*) FROM instigators` -> 0, `SELECT status, count(*) FROM runs` -> FAILURE 4 / SUCCESS 6, latest runs 2026-09-05 and 2026-09-17; warehouse raw.source_fetch = 275 rows for 110 series; platform-spec.md:786-798; README.md:22",
+      "estimate_points": 5,
+      "labels": [
+        "spec-gap",
+        "observability",
+        "data-quality"
+      ]
+    },
+    {
+      "name": "Add retry/backoff and failure surfacing to the ingest clients",
+      "module": "Unattended Daily Pipeline (M5)",
+      "type": "feature",
+      "priority": "high",
+      "state_group": "unstarted",
+      "description_markdown": "Each fetch client calls `requests.get(..., timeout=30)` then `raise_for_status()` with no retry, no backoff and no jitter, so a single transient 5xx or timeout marks a series failed for the whole day. The audit trail already proves failures happen: `raw.source_fetch` holds a recorded 404 for `DE_TS_10Y` at 2026-09-17 15:24:13, and the run history contains four FAILURE runs. Per-series tolerance exists at the run level (`land_source` records and continues), but nothing distinguishes a transient failure from a permanent one.\n\n**Acceptance criteria**\n- Retry with exponential backoff and jitter on connection errors, timeouts and 5xx; no retry on 4xx (which is a configuration error and should surface immediately).\n- A retry budget per run so one dead endpoint cannot extend the run indefinitely.\n- Failure reasons are aggregated into run metadata and, when the schedule is enabled, surfaced through the alerting path rather than only in the event log.\n- A test simulates a transient 503 followed by a 200 and asserts a single successful landing.\n- Retries respect provider rate limits; FRED's documented limits are recorded in `docs/api-calls.md`.",
+      "evidence": "ingest/fetch.py:55-56, 72-73, 90-91 (requests.get + raise_for_status, no retry); ingest/load.py:110-117 (failure recorded, no retry); warehouse raw.source_fetch row DE_TS_10Y http_status 404 at 2026-09-17 15:24:13; Dagster runs: 4 FAILURE / 6 SUCCESS; platform-spec.md:193-194, 232-238",
+      "estimate_points": 3,
+      "labels": [
+        "spec-gap",
+        "data-quality",
+        "observability"
+      ]
+    },
+    {
+      "name": "Emit bytes and per-source attempt/success/failure counts from the ingest assets",
+      "module": "Unattended Daily Pipeline (M5)",
+      "type": "task",
+      "priority": "medium",
+      "state_group": "backlog",
+      "description_markdown": "Spec §8 requires ingest assets to 'Emit metadata: series attempted, succeeded, failed, rows landed, bytes'. The single-series path returns bytes, but `land_source` (the path the three source assets call) returns only `{source, ok, failed, landed}` — no bytes, no attempted count, and no observation count — so the Dagster asset metadata cannot show whether a run landed 4 MB or 40 kB.\n\n**Acceptance criteria**\n- `land_source` returns attempted, succeeded, failed, rows landed, observations parsed and total bytes, consistent with `land_series`.\n- `@asset` metadata uses materialization metadata (not a plain dict) so the values are chartable per asset over time.\n- A failed series appears as a distinct metadata entry naming the series and HTTP status, so the asset page answers 'which series is broken' without opening the log.\n- The same fields feed the future weekly digest.",
+      "evidence": "platform-spec.md:232-238; ingest/load.py:118 (land_source stats lack bytes/attempted/observations) vs :168-171 (land_series includes bytes and observations); orchestration/assets/ingest.py:9-26 (add_output_metadata with the thin dict)",
+      "estimate_points": 2,
+      "labels": [
+        "spec-gap",
+        "observability",
+        "data-quality"
+      ]
+    },
+    {
+      "name": "Retire or Dagster-wrap scripts/run_pipeline.sh",
+      "module": "Unattended Daily Pipeline (M5)",
+      "type": "task",
+      "priority": "medium",
+      "state_group": "unstarted",
+      "description_markdown": "The script is documented as superseded ('Dagster replaces this script at M1+') but is still the local convenience path, and it takes a materially different route: it calls `python -m ingest.load`, whose `run()` -> `land_source()` never passes a `dagster_run_id`, so rows landed this way have a NULL lineage column; and it shells out to `dbt seed/run/test/docs generate` rather than going through `@dbt_assets`. It also mislabels its own steps ([1/4] then [2/4] ... [5/5]). Two conflicting ways to run the pipeline is exactly the sort of ambiguity that makes a 'which data is current' question hard to answer.\n\n**Acceptance criteria**\n- Either the script is deleted and the README's local-dev section points at `dagster job execute -m orchestration.definitions -j macro_pipeline` (or `dagster dev`), or it is kept as a thin wrapper that invokes that job so lineage is stamped identically.\n- `ingest/load.py`'s `run()`/`main()` no longer offers an unlineaged production-looking entry point without a warning, or accepts a run id.\n- Step labels fixed if the script survives.\n- `agents/notes.md` records which command is canonical for a local end-to-end run.",
+      "evidence": "scripts/run_pipeline.sh:5 (stale 'Dagster replaces this script at M1+'), :17-29 (step labels [1/4]..[5/5]); ingest/load.py:131 (land_source default dagster_run_id=None), :188-197 (run()); orchestration/ops.py:61-66, 81 (the path that stamps a run id); agents/notes.md:63-67",
+      "estimate_points": 3,
+      "labels": [
+        "tech-debt",
+        "docs",
+        "spec-gap"
+      ]
+    },
+    {
+      "name": "Add the nightly pg_dump job to object storage with 30-day retention",
+      "module": "Backup, Restore & Alerting",
+      "type": "feature",
+      "priority": "high",
+      "state_group": "backlog",
+      "description_markdown": "Spec §17 is unambiguous that `raw` is not reproducible — 'FRED will not give you back a response you failed to store, and revision history accumulated over months is genuinely irreplaceable' — and requires a nightly `pg_dump` of all three databases, gzipped, to Hetzner Object Storage (S3-compatible) with 30-day retention. None of this exists: there is no backup script under `scripts/`, no CronJob, and no object-storage credential anywhere in `.env.example`.\n\n**Acceptance criteria**\n- A `pg-backup` CronJob (or a Compose-side equivalent until M7) dumping `warehouse`, `dagster` and `cms` nightly, gzipped, uploaded to S3-compatible object storage.\n- Retention enforced at 30 days; the job logs dump sizes and fails loudly on a zero-byte or truncated dump.\n- Credentials come from environment/Secret, never from a committed file.\n- A documented manual invocation so an operator can take an ad-hoc dump before a risky change.\n- Failures are visible (the weekly digest or a dedicated alert), not buried in job history.",
+      "evidence": "platform-spec.md:699-706; no backup script in scripts/ (ls scripts/: build_metabase_dashboards.py, build_metabase_series_explorer.py, dbt_deps_report.py, elementary_serve.sh, liveability_model.py, run_pipeline.sh); no k8s/ CronJob; .env.example has no object-storage keys",
+      "estimate_points": 5,
+      "labels": [
+        "spec-gap",
+        "data-quality",
+        "k8s"
+      ]
+    },
+    {
+      "name": "Test a full restore into a fresh local Compose stack and write the runbook",
+      "module": "Backup, Restore & Alerting",
+      "type": "task",
+      "priority": "high",
+      "state_group": "backlog",
+      "description_markdown": "Spec §17: 'Test the restore. An untested backup is a hypothesis. Restore into a local Compose stack once, before you have anything worth losing.' With the live warehouse holding 7.1M mart rows plus the only record of two-plus weeks of real fetches, that condition is already met and no restore has been attempted.\n\n**Acceptance criteria**\n- A documented procedure that takes the latest dump into a clean `docker compose down -v` stack and re-runs `make check` plus `scripts/smoke.sh` against it.\n- Verification that `raw.source_fetch` row count, `marts.dim_series` (110), `marts.fct_macro_observation` and the three analytic marts match the source within the expected delta.\n- Restore time measured and recorded, since it determines the recovery objective.\n- The runbook lists the exact commands and the failure modes encountered; any gap it reveals in the dump (e.g. roles, schemas, ownership) is fixed in the backup job.\n- The exercise is repeated after any schema change to `sql/001_init.sh`.",
+      "evidence": "platform-spec.md:707-708; no restore documentation anywhere; warehouse holds 745,450 fact and 5,475,118 transform rows; sql/001_init.sh:10-15 (roles/databases must exist before a restore can be verified)",
+      "estimate_points": 3,
+      "labels": [
+        "spec-gap",
+        "data-quality"
+      ]
+    },
+    {
+      "name": "Extend backup coverage to the non-Postgres state (Metabase H2 and CloudBeaver workspace)",
+      "module": "Backup, Restore & Alerting",
+      "type": "task",
+      "priority": "medium",
+      "state_group": "backlog",
+      "description_markdown": "The backup obligation in spec §17 covers the three Postgres databases, but the stack keeps real configuration in Docker volumes outside Postgres: Metabase stores its own metadata on an embedded H2 database persisted in `metabase_data` (so saved questions, dashboards and the warehouse data-source definition — including the `platform_reader` credential — live there), and CloudBeaver persists its workspace and encrypted connection definitions in `cloudbeaver_data`. A volume loss discards both with no dump.\n\n**Acceptance criteria**\n- Both volumes are included in the nightly backup (tar of the volume, or a documented export via each tool's API/CLI).\n- The Metabase data-source definition and any saved questions are reproducible from a script in `scripts/` (the repo already has `build_metabase_dashboards.py` and `build_metabase_series_explorer.py` as a partial answer — confirm they can rebuild from empty).\n- The restore runbook covers restoring these volumes, not just Postgres.\n- A note in the docs states explicitly which state is source-of-truth and which is derived/reproducible.",
+      "evidence": "docker-compose.yml:117-118 (metabase_data mounted at /metabase.db), :136 (cloudbeaver_data workspace), :125-127 (data-source instructions); platform-spec.md:699-706 (dumps only the three DBs); scripts/build_metabase_dashboards.py, scripts/build_metabase_series_explorer.py",
+      "estimate_points": 2,
+      "labels": [
+        "spec-gap",
+        "data-quality"
+      ]
+    },
+    {
+      "name": "Build the weekly digest as the pipeline's obligation to the operator",
+      "module": "Backup, Restore & Alerting",
+      "type": "feature",
+      "priority": "medium",
+      "state_group": "backlog",
+      "description_markdown": "Spec §18 calls the weekly digest 'the thing that keeps the system alive: if it breaks, you notice, because you were going to read it', and specifies its content: series updated, checks failed, largest revisions, freshness violations, delivered by email or as a page on the site. Nothing implements it, and the ECB HICP series has now been stale for 291 days without anyone being told.\n\n**Acceptance criteria**\n- A scheduled job produces a digest containing: series updated in the window, series that did not update within 2x their frequency, checks that failed or warned (asset checks and dbt tests), the largest revisions by absolute change, and total rows landed.\n- Delivered by email or published where the operator will see it; the delivery mechanism is a recorded decision (spec §18's open question).\n- The digest is built from warehouse/marts queries, not from log parsing, so it is testable.\n- A test asserts the digest renders for a fixture window and flags the known stale series.",
+      "evidence": "platform-spec.md:726-733; no digest script or page in scripts/ or launchpad/; warehouse query shows ECB_HICP and ECB_HICP_CORE 291 days stale; docs/observability-plan.md:279-281 lists the digest as still-open",
+      "estimate_points": 5,
+      "labels": [
+        "spec-gap",
+        "observability",
+        "data-quality"
+      ]
+    },
+    {
+      "name": "Decide and deliver observability layer 3 (or record a deliberate deferral)",
+      "module": "Infrastructure Observability (spec §18)",
+      "type": "task",
+      "priority": "medium",
+      "state_group": "backlog",
+      "description_markdown": "`docs/observability-plan.md` opens with 'Status: proposal — nothing applied yet' and specifies a Prometheus + Loki + Grafana group with cAdvisor, Alloy, postgres-exporter and Pushgateway, plus four dashboards and a macOS caveat about cAdvisor reporting the LinuxKit VM. Spec §18 puts this layer after M8 and explicitly warns against rebuilding Dagster insight in Grafana. The plan's own open questions (weekly digest channel, Grafana auth, dashboards-as-code) remain unanswered.\n\n**Acceptance criteria**\n- A recorded decision: adopt phase 1 now, or defer to after M7/M8 with the reasoning (the budget is ~1-2 GB RAM on a machine already running 12 containers).\n- If adopted: the compose block from the plan is applied, Prometheus scrape targets verified (including whether Dagster really serves `/metrics` at the assumed path, which the plan itself flags as unconfirmed), and the containers dashboards provisioned as code rather than hand-built.\n- If deferred: the plan is marked deferred with the trigger condition, and the existing phase-0 tooling (Dagster, Elementary, dbt docs, `docker stats`) is documented as the current answer.\n- Either way, exporters are never exposed beyond loopback/tailnet.",
+      "evidence": "docs/observability-plan.md:3, 30-38, 62-129, 158-159, 243-253, 277-284; platform-spec.md:711-741; no observability services in docker-compose.yml; no observability/ directory in the repo",
+      "estimate_points": 5,
+      "labels": [
+        "observability",
+        "spec-gap",
+        "docs"
+      ]
+    },
+    {
+      "name": "Replace bare print() diagnostics in ingest and the API with structured JSON logs",
+      "module": "Infrastructure Observability (spec §18)",
+      "type": "task",
+      "priority": "medium",
+      "state_group": "backlog",
+      "description_markdown": "Spec §18 asks for structured JSON logging from FastAPI and ingest code, and the observability plan states the concrete gap: 'current code uses print/json.dumps for API payloads — move diagnostics to a logger' with a proposed event schema (`{event, series_id, n_rows, duration_ms, fetch_mode}`). Ingest currently emits eight bare `print` calls, including a WARN line whose text is the only signal that a parser recognised zero observations.\n\n**Acceptance criteria**\n- A logger configuration shared by ingest and the API emitting one JSON object per line to stdout with at least `event`, `series_id`/`source`, `duration_ms`, and outcome.\n- The zero-observations warning becomes a structured WARN that a log query can count, so a parser regression is detectable per series.\n- FastAPI request logs are JSON (uvicorn access log replaced or supplemented).\n- No `print()` remains in ingest or api code paths, enforced by a lint rule or a test.",
+      "evidence": "platform-spec.md:728; docs/observability-plan.md:205-217; ingest/load.py:73-74 (WARN print), :109, :117, :139-140, :183-184, :196; orchestration/ops.py:100 (context.log.info already structured) ",
+      "estimate_points": 3,
+      "labels": [
+        "observability",
+        "spec-gap",
+        "tech-debt"
+      ]
+    },
+    {
+      "name": "Author k8s/base and overlays/prod manifests for the full stack",
+      "module": "k3s Manifests & Release (M7)",
+      "type": "feature",
+      "priority": "high",
+      "state_group": "backlog",
+      "description_markdown": "Spec §15 says 'the containers do not change — this is the point of doing Compose first' and enumerates the required manifests in namespace `platform`: postgres (Deployment replicas 1, strategy Recreate, PVC 20Gi, ClusterIP Service, never ingressed), dagster-webserver (Deployment, Service, Ingress), dagster-daemon (Deployment, no Service), api (Deployment 2 replicas for zero-downtime rollouts, Service, Ingress), metabase (Deployment, PVC 5Gi, Service, Ingress), a nightly pg-backup CronJob, and a cert-manager ClusterIssuer. There is no `k8s/` directory at all.\n\n**Acceptance criteria**\n- `k8s/base/` plus `k8s/overlays/prod/` (kustomize), mirroring the Compose service set including the extra services delivered beyond spec (dashboard, germany, report servers), each with an explicit disposition.\n- PersistentVolumeClaims, Services, Ingresses as specified; Postgres has no Ingress.\n- ConfigMap for non-sensitive config and Secret for credentials, per spec §13 (no sealed secrets in v1).\n- `kubectl apply -k k8s/overlays/prod` documented as the Compose equivalent, and the manifests are hand-built/agent-assisted per spec §22.8 because the value is the debugging.\n- Manifests validated (kubeconform or `kubectl --dry-run=server`) in CI.",
+      "evidence": "platform-spec.md:580-636, 490-492; `ls k8s` -> No such file or directory; docker-compose.yml (the stack to translate); README.md:22 (M5+/k3s pending)",
+      "estimate_points": 8,
+      "labels": [
+        "k8s",
+        "spec-gap"
+      ]
+    },
+    {
+      "name": "Add liveness/readiness probes and the spec's resource requests and limits",
+      "module": "k3s Manifests & Release (M7)",
+      "type": "task",
+      "priority": "medium",
+      "state_group": "backlog",
+      "description_markdown": "Spec §15 argues that 'probes matter more than they look': `livenessProbe` on `/health` restarts a hung process that has not exited, and `readinessProbe` on `/ready` keeps traffic away from a pod whose DB connection is not up — the failure mode Compose cannot catch. It also gives explicit resource requests/limits and warns that without them 'a single runaway process starves the node'. The API already exposes the two endpoints, so only the manifests are missing; the Postgres healthcheck exists in Compose but nothing else does.\n\n**Acceptance criteria**\n- `livenessProbe` on `api:/health` and `readinessProbe` on `api:/ready`, with initial delay and thresholds appropriate to a cold DB.\n- Resource requests/limits applied exactly as the spec table specifies for postgres, dagster-webserver, dagster-daemon, api and metabase; adjusted values are documented with a measurement.\n- The other workloads (dashboard, germany, report servers) have at least memory limits.\n- A deliberate failure test: point `api` at a stopped DB and confirm the pod is not marked ready, then confirm a hung process is restarted by the liveness probe.",
+      "evidence": "platform-spec.md:607-610, 628-636; api/main.py:154-166 (/health and /ready exist); docker-compose.yml:15-19 (only postgres has a healthcheck); dashboard/Dockerfile has a HEALTHCHECK; no k8s/ manifests",
+      "estimate_points": 3,
+      "labels": [
+        "k8s",
+        "spec-gap",
+        "observability"
+      ]
+    },
+    {
+      "name": "Install Tailscale and restrict the admin plane before any Ingress exists",
+      "module": "Access & Exposure Model (spec §15a)",
+      "type": "task",
+      "priority": "urgent",
+      "state_group": "backlog",
+      "description_markdown": "Spec §20 states plainly: 'Tailscale is installed before the first Ingress exists, not after. The window between \"the box is on the internet\" and \"access control is configured\" is the one that gets exploited.' Spec §15a then requires the admin plane (Dagster, Metabase, the Elementary report, later Grafana) to bind to the tailnet interface with no public port, because Dagster's UI ships with no authentication at all and anyone who reaches it can trigger runs and read resource configuration. Today every admin surface is published on 0.0.0.0 in Compose — dagster :3000, metabase :3001, elementary :8081, dbt-deps :8082, dbt-docs :8083, germany :8084, cloudbeaver :8978, launchpad :8080.\n\n**Acceptance criteria**\n- Tailscale installed on the node with the hostname restricted to the operator's tailnet; `kubectl` used over the tailnet rather than exposing 6443.\n- Dagster, Metabase and the report servers reachable only over the tailnet; the only public DNS record is `api.` as §15a specifies.\n- A written checklist proving no admin UI has a public listener, executed before the first Ingress is applied.\n- Local Compose publishing documented as laptop-only (this is the invariant §22.5.7 exception) with the production bindings differing.",
+      "evidence": "platform-spec.md:640-674, 792-794; docker-compose.yml:45 (:3000), :79 (:8000), :96 (:8501), :110 (:8084), :119 (:3001), :141 (:8978), :150 (:8080), :163 (:8081), :176 (:8082), :183 (:8083); invariant §22.5.7 (line 937)",
+      "estimate_points": 3,
+      "labels": [
+        "security",
+        "k8s",
+        "spec-gap"
+      ]
+    },
+    {
+      "name": "Add Traefik rateLimit middleware on the public API Ingress",
+      "module": "Access & Exposure Model (spec §15a)",
+      "type": "feature",
+      "priority": "medium",
+      "state_group": "backlog",
+      "description_markdown": "Spec §10 rejects in-process rate limiting with a precise argument: `slowapi` keeps counters per worker, and §15 runs the API at `replicas: 2`, so a '100/minute' limit silently becomes 200/minute and drifts with every replica. The requirement is therefore Traefik's `rateLimit` middleware on the Ingress (or Cloudflare in front), and locally it may be skipped. The threat model is resource abuse — someone requesting 400 series across 80 years in a loop — which the query bounds only partly mitigate.\n\n**Acceptance criteria**\n- A Traefik `Middleware` (rateLimit) attached to the public API Ingress in `k8s/overlays/prod`, with the rate chosen from a measured baseline and documented.\n- No in-process limiter is introduced anywhere in `api/`.\n- A test or documented probe demonstrates that exceeding the limit returns 429 at the edge rather than reaching the API/Postgres.\n- The Cloudflare alternative is documented as the fallback, with the reason for the chosen option recorded.",
+      "evidence": "platform-spec.md:412-422, 611-618; no rate limiting anywhere in api/; no k8s/ Ingress exists yet; platform-spec.md:419-422 (owner-only endpoints stay key-protected instead)",
+      "estimate_points": 2,
+      "labels": [
+        "k8s",
+        "security",
+        "spec-gap"
+      ]
+    },
+    {
+      "name": "Remove committed credential defaults and document every key in .env.example",
+      "module": "Access & Exposure Model (spec §15a)",
+      "type": "task",
+      "priority": "high",
+      "state_group": "backlog",
+      "description_markdown": "Invariant §22.5.5 allows credentials in exactly two places: `.env` (gitignored) and `.env.example` (placeholders only). `docker-compose.yml` currently carries working defaults for the writer and reader roles, the ops key and the CloudBeaver admin (`ops_dev_key`, `writer_dev`, `reader_dev`, `Cloudbeaver123`), and `.env.example` documents the Postgres and ops keys but not the CloudBeaver admin, and omits spec §13's `DBT_TARGET`, `API_CORS_ORIGINS` and `LOG_LEVEL` entirely. A dev default is acceptable; an undocumented login credential in a committed file is not.\n\n**Acceptance criteria**\n- Every credential-shaped default in `docker-compose.yml` has a matching documented placeholder in `.env.example` with a note that the default is development-only and must be overridden before any deployment.\n- Spec §13's key list is fully covered: `POSTGRES_*`, `WAREHOUSE_READER_*` (or the platform_reader equivalents actually used), `DAGSTER_POSTGRES_DB`, `FRED_API_KEY`, `DBT_TARGET`, `API_CORS_ORIGINS`, `LOG_LEVEL`, plus the repo-specific `FX_FETCH_MODE`, `OPS_API_KEY`, `CLOUDBEAVER_ADMIN_*`, `GRAFANA_*` (if adopted) and the object-storage keys once backups exist.\n- A CI check fails if a key referenced by the code or Compose is absent from `.env.example`.\n- None of the four default credentials is a real secret; rotate guidance is included.",
+      "evidence": "platform-spec.md:503-521, invariant §22.5.5 (lines 932-933); docker-compose.yml:8-9, 36-38, 74, 77, 91, 94, 109, 133-134; .env.example:1-42 (no CloudBeaver section, no DBT_TARGET/API_CORS_ORIGINS/LOG_LEVEL); agents/notes.md:27-32 (rule that the three password locations must agree)",
+      "estimate_points": 2,
+      "labels": [
+        "security",
+        "docs",
+        "spec-gap"
+      ]
+    },
+    {
+      "name": "Guarantee Postgres and the k3s API server are never publicly exposed",
+      "module": "Access & Exposure Model (spec §15a)",
+      "type": "task",
+      "priority": "high",
+      "state_group": "backlog",
+      "description_markdown": "Spec §15a: 'Never expose: Postgres (5432), the k3s API server (6443). Run kubectl over the tailnet.' Spec §15 reiterates that Postgres gets a ClusterIP Service and no Ingress, and that the 5432 port publish exists only for local Compose. The local stack publishes Postgres on host 5433 and CloudBeaver (:8978) which reaches the warehouse — both fine on a laptop, both dangerous if the pattern is copied into a cloud manifest.\n\n**Acceptance criteria**\n- Postgres Service is ClusterIP only in `k8s/base`; no Ingress and no NodePort references it.\n- A verification script (or documented firewall probe) asserts from outside the tailnet that 5432 and 6443 are closed on the production host.\n- k3s API access is documented as tailnet-only, with an example `kubectl` invocation.\n- CloudBeaver's production disposition is decided: tailnet-only, or not deployed (its SQL workbench duplicates dbt docs and Metabase for a single operator).",
+      "evidence": "platform-spec.md:668-669, 596-598, 619-623; docker-compose.yml:11 (host 5433 publish), :141 (CloudBeaver 8978), :129-144; no k8s/ manifests",
+      "estimate_points": 2,
+      "labels": [
+        "security",
+        "k8s",
+        "spec-gap"
+      ]
+    },
+    {
+      "name": "Replace silent exception swallowing in the analytics modules with visible failures",
+      "module": "Streamlit Analytics Hardening",
+      "type": "bug",
+      "priority": "high",
+      "state_group": "unstarted",
+      "description_markdown": "The analytics layer converts every unexpected condition into a blank: `lab.py:307-314` swallows ADF/KPSS failures so a failed diagnostic renders as an em-dash indistinguishable from 'not applicable'; the Signal Lab's three mart loaders swallow every exception and silently fall back to runtime computation (`pages/1:179-202`); `forecast.py:468-472` masks failed CV folds with NaN which `forecast_metrics` then finite-masks, so RMSE/MASE rest on fewer folds than the user selected; `forecast.py:358-378` returns a hardcoded ARIMA order when nothing wins the information-criterion race; `volatility.py:582-583` skips non-converging backtest windows while `n_available` still counts them. These are exactly the outputs a research user is least able to sanity-check by eye.\n\n**Acceptance criteria**\n- No bare `except: pass` or `except: return <empty>` remains: each site logs a warning with the exception and the affected series/parameter set, and surfaces it in the UI (a small caption or an expander) at least once per page.\n- Failed CV folds and skipped backtest windows are counted and displayed ('12 of 40 windows did not converge'), so coverage statistics cannot be overstated.\n- The `consider()` fallback either raises or states in the UI that no model was selected on information criteria.\n- A test asserts that a forced failure produces a visible warning rather than a silent NaN.",
+      "evidence": "dashboard/lab.py:307-314; dashboard/pages/1_📊_Signal_Lab.py:179-202, 742-743; dashboard/forecast.py:358-378, 468-472; dashboard/volatility.py:582-583, 615; dashboard/pages/3_🔄_Data_Ops.py:73-74",
+      "estimate_points": 3,
+      "labels": [
+        "dashboard",
+        "correctness",
+        "tech-debt"
+      ]
+    },
+    {
+      "name": "Add unit tests for the analytics modules (currently zero coverage)",
+      "module": "Streamlit Analytics Hardening",
+      "type": "task",
+      "priority": "high",
+      "state_group": "backlog",
+      "description_markdown": "`tests/` contains only `test_parse.py` (ingest) and `test_liveability_model.py`. Zero tests cover `dashboard/lab.py` (762 lines), `dashboard/volatility.py` (761), `dashboard/forecast.py` (612), `dashboard/data.py` or any of the four pages — roughly 4,400 lines of statistics. `pyproject.toml` packages only `ingest`, `api` and `orchestration`, so the dashboard modules are not even importable as an installed package in the test environment.\n\n**Acceptance criteria**\n- `dashboard` becomes importable in the test environment (add it to `[tool.hatch.build.targets.wheel]` packages or configure pytest's pythonpath).\n- Tests cover the pure functions with known-value fixtures: transform functions (level/diff/pct_change/log_return/index/zscore), resampling agreement with the dbt grain definitions, forecast metric definitions, volatility estimator identities (e.g. RiskMetrics recursion, annualisation), and Kupiec/Christoffersen p-value behaviour on synthetic breach series.\n- A test asserts the dashboard's native-frequency resampling agrees with dbt's `date_trunc` + last-in-bucket definition for a fixture series, since two independent resamplers currently exist.\n- Coverage is reported in CI; a floor is set so it cannot regress to zero.",
+      "evidence": "tests/ = test_parse.py + test_liveability_model.py; wc -l dashboard/lab.py 762, volatility.py 761, forecast.py 612; pyproject.toml:32-40 (packages = ingest/api/orchestration; testpaths = tests); dbt/models/intermediate/int_macro__grains_base.sql:76-128 vs dashboard/forecast.py:49-86 (independent resamplers)",
+      "estimate_points": 5,
+      "labels": [
+        "dashboard",
+        "ci-cd",
+        "data-quality"
+      ]
+    },
+    {
+      "name": "Wire Signal Lab's calendar metrics to the period-metrics mart or delete the dead loader",
+      "module": "Streamlit Analytics Hardening",
+      "type": "bug",
+      "priority": "medium",
+      "state_group": "unstarted",
+      "description_markdown": "`dashboard/data.py:112-132` defines `load_series_period_metrics`, and nothing imports it anywhere in the repo. The consequence is twofold: `marts.fct_macro_series_period_metrics` (806,952 rows, rebuilt daily) is dead weight, and Signal Lab recomputes MoM/QoQ/YoY/MTD/YTD in pandas on every rerun via `lab.calendar_stats`, which is both slower and a second implementation of the same definitions — so the warehouse mart and the UI can disagree. README:128-131 explicitly claims the mart feeds Signal Lab.\n\n**Acceptance criteria**\n- A decision: either Signal Lab reads the period-metrics mart for the grain it displays (and the runtime recompute remains only as an explicit fallback for grains the mart does not cover), or the mart and the loader are removed and README corrected.\n- If wired, a test asserts the pandas path and the mart agree on a fixture series within a stated tolerance, and the UI marks which source it used.\n- The dead-loader check is added to a lint/test so an unused public loader cannot accumulate again.",
+      "evidence": "grep for load_series_period_metrics -> only its definition at dashboard/data.py:112; README.md:128-131; dashboard/lab.py:641-670 (calendar_stats recompute); warehouse marts.fct_macro_series_period_metrics = 806,952 rows",
+      "estimate_points": 3,
+      "labels": [
+        "dashboard",
+        "performance",
+        "correctness"
+      ]
+    },
+    {
+      "name": "Stop refitting the GARCH family twice per Volatility Studio page load",
+      "module": "Streamlit Analytics Hardening",
+      "type": "bug",
+      "priority": "medium",
+      "state_group": "backlog",
+      "description_markdown": "`fit_bundle` and `horizon_bundle` each call `V.fit_model`, and both are invoked unconditionally on every render, so a full BIC race over GARCH(1,1)-normal/-t, GJR-t and GJR-skew-t plus a 20,000-path simulation runs twice per page load. The docstring at `pages/2:122-125` claims moving the horizon slider does not refit the model; in reality changing H re-runs the race and the simulation, and changing the fit window invalidates both caches.\n\n**Acceptance criteria**\n- The model is fitted once per (series, window, spec) and the horizon/distribution bundle consumes the fitted result; verified by instrumentation showing one fit per change of the fit-parameter set.\n- Changing only the horizon or simulation count does not refit.\n- The docstring is corrected to state what is actually cached, and `st.cache_data` keys include every parameter that changes the fit.\n- Page-load time before/after recorded.",
+      "evidence": "dashboard/pages/2_🌊_Volatility_Studio.py:120-127 (fit_bundle), :141, :175-188 (horizon_bundle), :700-716 (both called unconditionally), :122-125 (docstring claim)",
+      "estimate_points": 3,
+      "labels": [
+        "dashboard",
+        "performance"
+      ]
+    },
+    {
+      "name": "Derive volatility interval quantiles from the requested confidence levels",
+      "module": "Streamlit Analytics Hardening",
+      "type": "bug",
+      "priority": "medium",
+      "state_group": "backlog",
+      "description_markdown": "The interval backtest hardcodes the normal quantiles 1.645 (90%) and 0.6745 (50%) for the variance-normal and naive baselines while the function accepts a `levels` parameter. Any other level silently produces columns labelled `breach90_*`/`breach50_*` whose arithmetic belongs to 90/50 — a wrong-number bug that would be invisible in the UI because the labels stay correct.\n\n**Acceptance criteria**\n- Quantiles are computed from `levels` (e.g. `scipy.stats.norm.ppf(1 - (1-level)/2)`), and column names are generated from the actual levels rather than hardcoded.\n- A test asserts that requesting a different level changes the interval widths accordingly and that the breach counts are computed against the matching bounds.\n- The simulated-t path and the two analytic paths are labelled as distinct methods consistently in the UI and the DataFrame.",
+      "evidence": "dashboard/volatility.py:596-609 (hardcoded 1.645 and 0.6745), :539 (levels parameter), :605-609 (breach columns named for 90/50)",
+      "estimate_points": 2,
+      "labels": [
+        "dashboard",
+        "correctness"
+      ]
+    },
+    {
+      "name": "Label synthetic OHLC clearly so range estimators are not read as inference",
+      "module": "Streamlit Analytics Hardening",
+      "type": "task",
+      "priority": "medium",
+      "state_group": "backlog",
+      "description_markdown": "The warehouse is close-only, so the true-bar estimators (Parkinson, Garman-Klass, Yang-Zhang) are unavailable. The code offers `synthetic_ohlc`, which fabricates bars from the close's own rolling range; its docstring is admirably blunt ('carries no intraday information ... biased and too smooth ... never for inference'), but the page plots those estimators in the same table and fan as the genuine close-based ones, distinguished only by prose, and the real-bars branch is unreachable from the UI because `ohlc` is always passed as `None`.\n\n**Acceptance criteria**\n- Synthetic-bar outputs are visually separated (own section, distinct styling, or hidden behind an explicit 'show proxy estimators' toggle that is off by default) from estimators computed on real data.\n- The unreachable real-bars path is either wired to a data source or removed, and `fit_bundle(..., ohlc=None)` is no longer a dead parameter.\n- The UI states in the estimator table itself, not only in surrounding text, that the bars are synthesised.\n- A test asserts the proxy path cannot be silently merged into the headline sigma comparison.",
+      "evidence": "dashboard/volatility.py:153-172 (synthetic_ohlc docstring), :213-216 (real-bars branch); dashboard/pages/2_🌊_Volatility_Studio.py:650-652, 706-707 (ohlc always None), 785-799 (plotted beside real estimators)",
+      "estimate_points": 2,
+      "labels": [
+        "dashboard",
+        "correctness",
+        "docs"
+      ]
+    },
+    {
+      "name": "Consolidate the three duplicated page-level data wrappers into one cached, pooled layer",
+      "module": "Streamlit Analytics Hardening",
+      "type": "task",
+      "priority": "medium",
+      "state_group": "backlog",
+      "description_markdown": "`dashboard/data.py` provides the shared loaders, but each page re-declares its own cached wrappers (`get_catalog`/`get_obs` in Forecast Studio, Signal Lab and Volatility Studio), so the caches are cold on every navigation and the same query is issued from three places. Underneath, `_query_df` opens and closes a fresh psycopg connection per query with no pool, so a single Signal Lab render can open four to six connections. The connection defaults are also inconsistent across the codebase: `dashboard/data.py:18` defaults the port to 5432 while `ingest/config.py:50` defaults to 5433, and `germany/main.py` re-declares the environment again.\n\n**Acceptance criteria**\n- One module owns catalog/observation/grain/transform loading with `st.cache_data` (or `st.cache_resource` for the pool) and a single configuration source; page-level duplicates are deleted.\n- A connection pool or a cached connection is used, with `st.cache_resource` so it survives reruns; connection count per render measured before/after.\n- Database configuration is resolved in exactly one place and the 5432/5433 default divergence is removed or explained in one comment.\n- A test asserts a second identical render performs no new query.",
+      "evidence": "dashboard/data.py:24-42 (per-query connect, no pool), :17-21 (port default 5432); duplicated wrappers at dashboard/📈_Forecast_Studio.py:30,35; dashboard/pages/1_📊_Signal_Lab.py:137,142,178-194; dashboard/pages/2_🌊_Volatility_Studio.py:104,109; ingest/config.py:50 (port default 5433); germany/main.py re-declares PG env",
+      "estimate_points": 5,
+      "labels": [
+        "dashboard",
+        "performance",
+        "tech-debt"
+      ]
+    },
+    {
+      "name": "Remove the unused scikit-learn dependency (or use it)",
+      "module": "Streamlit Analytics Hardening",
+      "type": "task",
+      "priority": "low",
+      "state_group": "backlog",
+      "description_markdown": "`dashboard/requirements.txt` ships `scikit-learn>=1.5` and `dashboard/Dockerfile` installs `libgomp1` specifically because scikit-learn wheels need OpenMP — but there is no `import sklearn` or `scikit` reference anywhere in the dashboard code. README:138-140 advertises the container as carrying 'statsmodels, scikit-learn, scipy'. The dependency is pure image size and build time today.\n\n**Acceptance criteria**\n- Either remove scikit-learn and the `libgomp1` install (verifying the image still builds and the pages import cleanly), or add the intended usage with a test.\n- README's stack description matches the actual dependency list.\n- Image size before/after recorded.",
+      "evidence": "dashboard/requirements.txt:7; grep for sklearn/scikit in dashboard/*.py -> only requirements.txt; dashboard/Dockerfile:13-17 (libgomp1 comment names scikit-learn); README.md:138-140",
+      "estimate_points": 1,
+      "labels": [
+        "dashboard",
+        "tech-debt",
+        "docs"
+      ]
+    },
+    {
+      "name": "Correct the README claim that the filtered slice feeds every Signal Lab tab",
+      "module": "Streamlit Analytics Hardening",
+      "type": "bug",
+      "priority": "low",
+      "state_group": "backlog",
+      "description_markdown": "README:170-171 and the Signal Lab docstring say the filtered slice 'can feed every other tab'. It cannot: `render_decomposition` reads `ctx[\"prepared\"]` while every other tab reads `ctx[\"analysis\"]`, so the Decomposition tab ignores both the selected transform and the time-series filter applied upstream.\n\n**Acceptance criteria**\n- Either make Decomposition consume `ctx[\"analysis\"]` consistently (and re-verify the STL/classical/multiplicative paths still make sense on a filtered or transformed series) or correct the documentation to state that Decomposition always uses the prepared level series.\n- A test or a printed assertion in the page documents which context key each tab reads, so the behaviour cannot silently change.\n- The UI indicates on the Decomposition tab which series it is decomposing.",
+      "evidence": "README.md:170-171; dashboard/pages/1_📊_Signal_Lab.py:346 (ctx[\"prepared\"]) vs :209, 263, 430, 517, 673 (ctx[\"analysis\"])",
+      "estimate_points": 1,
+      "labels": [
+        "dashboard",
+        "docs",
+        "correctness"
+      ]
+    },
+    {
+      "name": "Retire the committed prototype artefacts and document the reference path",
+      "module": "Streamlit Analytics Hardening",
+      "type": "task",
+      "priority": "low",
+      "state_group": "backlog",
+      "description_markdown": "The repo still carries a 1,062,583-byte generated `volatility-report.html` at the root and an on-disk `warehouse/fx_macro.duckdb` left from the retired DuckDB slice, neither of which the spec's layout anticipates. `volatility_pipeline.py` is the reference prototype for `dashboard/volatility.py`, but it sits at the root while the dashboard image's build context is `./dashboard`, so the reference is not reachable from the container that adapted it.\n\n**Acceptance criteria**\n- The 1MB HTML is removed from git (or moved under a documented `reference/` path with an explanation of how to regenerate it).\n- The DuckDB file is deleted; `docs/migration-plan.md`'s retire note is marked done.\n- The relationship between `volatility_pipeline.py` and `dashboard/volatility.py` is documented in one place, with a note on how divergence is detected (ideally a test comparing the shared pure functions).\n- `.gitignore` covers any generated report artefacts so they cannot be re-added by accident.",
+      "evidence": "`ls -la volatility-report.html` -> 1,062,583 bytes (tracked); warehouse/fx_macro.duckdb present on disk; docs/migration-plan.md:62 ('raw/, warehouse/fx_macro.duckdb Retire'); README.md:208 (reference presentation not copied); docker-compose.yml:82 (dashboard build context ./dashboard)",
+      "estimate_points": 1,
+      "labels": [
+        "tech-debt",
+        "docs"
+      ]
+    },
+    {
+      "name": "Serve the Germany dashboard's indicator list from marts.dim_series",
+      "module": "Germany Macro Dashboard",
+      "type": "bug",
+      "priority": "medium",
+      "state_group": "backlog",
+      "description_markdown": "`germany/main.py` declares a hardcoded 42-entry `INDICATORS` list (11 base entries plus 31 generated term-structure entries) and `/api/indicators` returns it directly, while `/api/meta` in the same file queries the warehouse. As a result the dashboard's indicator catalogue can drift from `marts.dim_series` (110 series) and from the seed, and a series added to the catalog will not appear.\n\n**Acceptance criteria**\n- `/api/indicators` derives its list from `marts.dim_series`, filtered to the categories the dashboard actually supports, with the term-structure grouping derived from the `DE_TS_*` naming or an explicit category rather than a hardcoded tuple.\n- The endpoint's response shape stays stable for `static/app.js` consumers (or the frontend is updated in the same change).\n- A test asserts the indicator count matches the warehouse for a fixture catalogue and that every returned id exists in `dim_series`.\n- Any deliberately excluded series are listed with the reason in code or docs.",
+      "evidence": "germany/main.py:128-157 (INDICATORS), :300-302 (/api/indicators returns it), :290-296 (/api/meta queries the warehouse); dbt/models/marts/dim_series.sql:4; warehouse dim_series = 110 rows",
+      "estimate_points": 3,
+      "labels": [
+        "dashboard",
+        "correctness",
+        "spec-gap"
+      ]
+    },
+    {
+      "name": "Share one data-access layer between the Germany dashboard, the API and the Streamlit suite",
+      "module": "Germany Macro Dashboard",
+      "type": "task",
+      "priority": "medium",
+      "state_group": "backlog",
+      "description_markdown": "`germany/main.py` reimplements helpers that already exist twice: `_connect` mirrors `api/main.py:85-89` and `dashboard/data.py:24-32`; `_rows` mirrors `api/main.py:91-95`; `_warehouse_build` mirrors `api/main.py:98-104`; its observation SQL mirrors `api/main.py:141-147`; and `MAX_RANGE_DAYS` duplicates `api/main.py:26`. It also re-declares the Postgres environment instead of importing the shared config, and the two duplicated re-implementations already disagree on the default port (5432 vs 5433).\n\n**Acceptance criteria**\n- A shared read-only warehouse module (in the platform package) provides connection/config, row fetching and the observation query; `germany/main.py`, `api/main.py` and `dashboard/data.py` all use it.\n- The 5432/5433 default divergence is resolved in one place.\n- A test asserts the Germany dashboard's observation payload for a series is identical to the API's for the same range, so the two surfaces cannot diverge.\n- Removing the duplication does not add dbt/Dagster dependencies to the germany image.",
+      "evidence": "germany/main.py:164-199 (connect/_rows/warehouse_build/observation SQL), :44 (MAX_RANGE_DAYS); api/main.py:26, 85-95, 98-104, 141-147; dashboard/data.py:17-32 (port default 5432); ingest/config.py:50 (port default 5433)",
+      "estimate_points": 5,
+      "labels": [
+        "dashboard",
+        "tech-debt",
+        "api"
+      ]
+    },
+    {
+      "name": "Add endpoint tests for the Germany dashboard",
+      "module": "Germany Macro Dashboard",
+      "type": "task",
+      "priority": "medium",
+      "state_group": "backlog",
+      "description_markdown": "`germany/main.py` is a 553-line FastAPI service with eight endpoints and no tests; `germany/static/app.js` (778 lines) consumes them with no contract test, so a response-shape change breaks the dashboard silently. The tests directory has no germany coverage at all.\n\n**Acceptance criteria**\n- Tests for `/health`, `/ready`, `/api/meta`, `/api/indicators`, `/api/observations/{id}` (known and unknown), `/api/snapshot`, `/api/yield-curve` and `/api/indicator/{id}`, asserting status codes and the top-level keys `static/app.js` reads.\n- A test asserts the yield-curve response contains 31 tenors and `interpolated_tenors` consistent with its own payload, so the 'no interpolation' claim is machine-checked.\n- Tests run without a live warehouse (fixture or injected connection), so they can run in CI.\n- A contract fixture of the JSON shapes is committed so frontend and backend changes are reviewed together.",
+      "evidence": "germany/main.py:275-553 (all endpoints); no test file for germany under tests/; dashboard/pages are likewise untested but tracked separately",
+      "estimate_points": 3,
+      "labels": [
+        "dashboard",
+        "ci-cd",
+        "data-quality"
+      ]
+    },
+    {
+      "name": "Make the yield-curve endpoint degrade gracefully when a BBSIS tenor is missing",
+      "module": "Germany Macro Dashboard",
+      "type": "bug",
+      "priority": "medium",
+      "state_group": "backlog",
+      "description_markdown": "The dashboard advertises a complete 0.5-30Y curve with `interpolated_tenors: 0`, built from 31 Bundesbank BBSIS series fetched individually. A recorded failure shows how fragile that is: `raw.source_fetch` contains a null-payload row for `DE_TS_10Y` with HTTP 404 at 2026-09-17 15:24:13, so a single upstream hiccup can leave a hole in the curve. Nothing in the endpoint contract says what the consumer should render in that case.\n\n**Acceptance criteria**\n- The endpoint reports, per tenor, whether a value is present and when it was observed, so the frontend can render a gap rather than a straight-line interpolation that pretends to be data.\n- `interpolated_tenors` reflects reality; if a tenor is carried forward or interpolated, it is counted and labelled.\n- A test with a fixture missing one tenor asserts the response marks the gap and does not silently shift the curve.\n- The recorded 404 is investigated: confirm whether the BBSIS key for the 10Y residual maturity is correct and whether ingestion has since recovered.",
+      "evidence": "raw.source_fetch row DE_TS_10Y, source bundesbank, fetched_at 2026-09-17 15:24:13.124033+00, http_status 404, payload NULL; germany/main.py:433-511 (/api/yield-curve, interpolated_tenors 0), :57-61 (31 CURVE_TENORS); ingest/config.py:206-216 (BBSIS key construction)",
+      "estimate_points": 2,
+      "labels": [
+        "dashboard",
+        "correctness",
+        "data-quality"
+      ]
+    },
+    {
+      "name": "Add pytest coverage for the API layer's query bounds and envelope",
+      "module": "Public API Contract (spec §10)",
+      "type": "task",
+      "priority": "medium",
+      "state_group": "backlog",
+      "description_markdown": "Companion to the broader API test item, scoped to the serving contract: the two bounds that already work (50-year range, 20 series ids) and the envelope fields the spec fixes are unprotected by tests, so a refactor can regress them with no signal. Also verifies the `platform_reader`-only read path by asserting no endpoint touches a schema outside marts/meta.\n\n**Acceptance criteria**\n- Parameterised tests for every bound documented in spec §10, including the new page-size bound once it lands.\n- A test parses the SQL issued by each route (or asserts against a reader role with SELECT revoked on `staging`/`intermediate`) to prove the API cannot read a non-served schema.\n- `meta` field presence and types asserted for all `/v1` routes.\n- Runs in CI without Compose.",
+      "evidence": "platform-spec.md:401-410, invariant §22.5.4; api/main.py:26-28, 118-122, 226-231; no API tests under tests/",
+      "estimate_points": 2,
+      "labels": [
+        "api",
+        "api-bounds",
+        "ci-cd"
+      ]
+    },
+    {
+      "name": "Bound the raw landing contract: append-only, sha256-indexed, failed fetches recorded",
+      "module": "Bitemporal Vintage Fidelity",
+      "type": "task",
+      "priority": "high",
+      "state_group": "completed",
+      "description_markdown": "Delivered and verified. `raw.source_fetch` exists with the spec §5 column set, a `(source, resource, fetched_at DESC)` index, a `payload_sha256` index, and no update/delete path in the codebase. `ingest/load.py` inserts one row per fetch event with parsed `payload`, byte-faithful `payload_raw`, the digest and `dagster_run_id`, and records a failed fetch as a null-payload row with its HTTP status rather than raising. Verified at runtime: 275 rows across 110 resources, including exactly one recorded failure (DE_TS_10Y, HTTP 404), and no writer code performs an UPDATE or DELETE against the table.\n\n**Residual work is tracked separately**: sha256 is not yet *read* (change-detection ticket), vintages are not yet genuine (ALFRED ticket), and the disk-level archive written by `_archive` is not persisted by Compose for the Dagster containers — the daemon wrote two files to a container-local path with no volume mount, so the belt-and-suspenders copy is lost on recreate. The Postgres table remains the durable record.",
+      "evidence": "sql/001_init.sh:33-51; ingest/load.py:41-50, 92-118 (failed-fetch rows), 131-141; warehouse: 275 rows / 110 resources, 1 null-payload row; platform-spec.md:116-149",
+      "estimate_points": 5,
+      "labels": [
+        "bitemporal",
+        "spec-gap"
+      ]
+    },
+    {
+      "name": "Bitemporal fact grain with is_latest and a latest view",
+      "module": "Bitemporal Vintage Fidelity",
+      "type": "task",
+      "priority": "high",
+      "state_group": "completed",
+      "description_markdown": "Delivered and verified. The three staging models unpack the JSON payloads to typed `(series_id, obs_date, known_at, value, fetched_at)`; `int_macro__observations_unioned.sql` unions them, deduplicates to the grain `(series_id, obs_date, known_at]` keeping the newest `fetched_at`, drops null values, and computes `is_latest` per `(series_id, obs_date)`. `marts.fct_macro_observation` carries a surrogate key over the grain (unique-tested) and `marts.fct_macro_observation_latest` filters `is_latest`. Live: 745,450 fact rows and 471,453 latest rows across 110 series.\n\nThe structural decision is therefore in place; the open work is fidelity of `known_at` itself (ALFRED, the no-change rule, the type decision) and the row-growth consequences of restating history on every fetch.",
+      "evidence": "dbt/models/staging/stg_*.sql; dbt/models/intermediate/int_macro__observations_unioned.sql:12-38; dbt/models/marts/fct_macro_observation.sql; fct_macro_observation_latest.sql; dbt/models/marts/schema.yml:4-30; warehouse counts 745,450 / 471,453 / 110; platform-spec.md:153-188",
+      "estimate_points": 5,
+      "labels": [
+        "bitemporal",
+        "dbt"
+      ]
+    },
+    {
+      "name": "Enforce the 50-year range and 20-series query bounds with HTTP 400",
+      "module": "Public API Contract (spec §10)",
+      "type": "task",
+      "priority": "high",
+      "state_group": "completed",
+      "description_markdown": "Delivered and verified at runtime. `api/main.py` defines `MAX_SERIES_IDS = 20` and `MAX_RANGE_DAYS = 50 * 365`, `_range_check` rejects `from > to` and any range beyond the limit, and the multi-series route rejects more than 20 ids and an empty list — all with 400 and a message naming the limit, in Pydantic/routing rather than in SQL. Probed live: a 1900-to-2026 range returned 400 and 21 `series_ids` returned 400, while valid requests returned 200.\n\nThe remaining bounds work (page size on observation endpoints) and the unimplemented headers are tracked as separate items.",
+      "evidence": "api/main.py:26-28, 118-122, 219-235; runtime probe: over-50-year range -> 400, 21 series_ids -> 400; platform-spec.md:401-410",
+      "estimate_points": 3,
+      "labels": [
+        "api",
+        "api-bounds"
+      ]
+    },
+    {
+      "name": "Owner-only /ops trigger router with constant-time key check and dbt selector pre-flight",
+      "module": "Public API Contract (spec §10)",
+      "type": "task",
+      "priority": "high",
+      "state_group": "completed",
+      "description_markdown": "Delivered and verified. Spec §10's owner-only rule is implemented exactly: the router lives at `/ops` (never under `/v1`), every route depends on `require_key`, the key is compared with `secrets.compare_digest`, and an unset `OPS_API_KEY` fails closed with 503 rather than opening the router. The API writes no warehouse data — it queues Dagster runs over GraphQL and reports them, keeping Dagster the single orchestrator. The refreshing path also solves a real trap documented in `agents/notes.md`: `dbt build --select <typo>` exits 0 having transformed nothing, so `_assert_selection_matches` pre-flights the selector through dbt's own runner and refuses to run an empty selection.\n\nFollow-ups tracked separately: the router imports the ingest registry instead of reading `marts.dim_series`, and it blanks the `unit` field it already selects.",
+      "evidence": "api/ops.py:42-58 (constant-time check, fail-closed), :191-285; api/dagster_client.py:102-120; orchestration/ops.py:92-134 (selector pre-flight); agents/notes.md:104-118; platform-spec.md:424-430",
+      "estimate_points": 5,
+      "labels": [
+        "api",
+        "spec-gap"
+      ]
+    },
+    {
+      "name": "Precomputed grain, transform and period-metric marts for the analytics suite",
+      "module": "Streamlit Analytics Hardening",
+      "type": "task",
+      "priority": "medium",
+      "state_group": "completed",
+      "description_markdown": "Delivered and materialized. `fct_macro_series_grains` resamples every series to day/week/month/quarter/year never finer than its native frequency (enforced by the singular test `assert_grain_never_finer_than_native`), with a unique index and ANALYZE applied in `on-run-end`. `fct_macro_series_transforms` emits level, diff, pct_change, log_level, log_return, index_100 and zscore in long format. `fct_macro_series_period_metrics` emits level plus MoM/QoQ/YoY/MTD/YTD using set-based calendar joins. Live row counts: 806,952 / 5,475,118 / 806,952.\n\nKnown follow-ups are tracked: index_100 base semantics, full-history zscore look-ahead, forward-fill labelling, the unused period-metrics loader, and the rebuild cost of a 5.47M-row full-refresh table.",
+      "evidence": "dbt/models/intermediate/int_macro__grains_base.sql; dbt/models/marts/fct_macro_series_grains.sql, fct_macro_series_transforms.sql, fct_macro_series_period_metrics.sql; dbt/tests/assert_grain_never_finer_than_native.sql; dbt/dbt_project.yml:36-46; warehouse counts 806,952 / 5,475,118 / 806,952; README.md:114-134",
+      "estimate_points": 8,
+      "labels": [
+        "dbt",
+        "dashboard"
+      ]
+    },
+    {
+      "name": "Germany economy dashboard with a real 31-tenor Bundesbank curve",
+      "module": "Germany Macro Dashboard",
+      "type": "feature",
+      "priority": "medium",
+      "state_group": "completed",
+      "description_markdown": "Delivered and running. `germany/` is a FastAPI service with a static D3 frontend, containerized as `germany-dashboard` on :8084 with its own healthcheck. `/api/yield-curve` serves the 31 real BBSIS tenors (6M plus 1Y-30Y) with `interpolated_tenors: 0`, backed by 31 ingested `DE_TS_*` series whose byte-faithful responses are archived under `raw/bundesbank/`. `/api/snapshot`, `/api/indicators`, `/api/observations/{id}` and `/api/indicator/{id}` feed the tiles and charts.\n\nFollow-ups tracked separately: the hardcoded indicator list, the duplicated data-access layer, missing tests, and graceful handling of a missing tenor (a 404 for DE_TS_10Y is recorded in raw.source_fetch).",
+      "evidence": "germany/main.py:57-61 (31 curve tenors), :433-511 (yield-curve endpoint), :553 (static mount); germany/Dockerfile; docker-compose.yml:99-110; ingest/config.py:198-216; raw/bundesbank/DE_TS_* directories; git commit e1bb291 and 09a3313",
+      "estimate_points": 8,
+      "labels": [
+        "dashboard"
+      ]
+    },
+    {
+      "name": "Liveability MVP: 19-country seed, scoring model, map page and regression tests",
+      "module": "Country Scoring & Liveability API (spec §19)",
+      "type": "feature",
+      "priority": "medium",
+      "state_group": "completed",
+      "description_markdown": "Delivered as an MVP. `dbt/seeds/country_profile_mvp.csv` holds 19 OECD-core countries with 20 per-country fields, each numeric field carrying a source class, a `confidence` value (13 high / 5 medium / 1 low) and a `verified_by` value (2 agent+human, 11 agent, 6 human); the seed has dbt tests on the key, `price_level` and `confidence`. `scripts/liveability_model.py` computes terminal wealth and a switch recommendation, `dashboard/pages/4_🌍_Where_Should_I_Live.py` renders a 19-country choropleth from `dashboard/europe19.geojson` (19 features matching the seed), and 19 regression tests pin the model's behaviour.\n\nThis is explicitly pre-warehouse and pre-API: the score runs in Python at render time, no country mart exists, and the docs disagree with the seed on several headline parameters — all tracked as separate items.",
+      "evidence": "dbt/seeds/country_profile_mvp.csv (19 rows, 20 columns); dbt/seeds/properties.yml:22-43; scripts/liveability_model.py; dashboard/pages/4_🌍_Where_Should_I_Live.py; dashboard/europe19.geojson (19 features); tests/test_liveability_model.py; git commit 4862802",
+      "estimate_points": 8,
+      "labels": [
+        "liveability",
+        "dbt"
+      ]
+    }
+  ],
+  "labels": [
+    {
+      "name": "spec-gap",
+      "color": "#0E7490",
+      "description": "Closes a gap between platform-spec.md and the shipped code"
+    },
+    {
+      "name": "bitemporal",
+      "color": "#7C3AED",
+      "description": "obs_date / known_at / fetched_at semantics and vintage fidelity"
+    },
+    {
+      "name": "data-quality",
+      "color": "#B45309",
+      "description": "Tests, checks, anomaly detection and freshness signals"
+    },
+    {
+      "name": "correctness",
+      "color": "#DC2626",
+      "description": "Code that produces wrong, unverifiable or silently degraded results"
+    },
+    {
+      "name": "performance",
+      "color": "#EA580C",
+      "description": "Runtime, memory or warehouse build cost"
+    },
+    {
+      "name": "api",
+      "color": "#2563EB",
+      "description": "The FastAPI read and trigger surface"
+    },
+    {
+      "name": "api-bounds",
+      "color": "#1D4ED8",
+      "description": "Query bounds, pagination and response-contract enforcement"
+    },
+    {
+      "name": "dbt",
+      "color": "#A16207",
+      "description": "dbt models, seeds, tests and materialization strategy"
+    },
+    {
+      "name": "dashboard",
+      "color": "#DB2777",
+      "description": "Streamlit suite, Germany dashboard and their analytics modules"
+    },
+    {
+      "name": "liveability",
+      "color": "#CA8A04",
+      "description": "Country scoring, relocation research and the liveability docs"
+    },
+    {
+      "name": "observability",
+      "color": "#059669",
+      "description": "Logging, metrics, digests and run/asset visibility"
+    },
+    {
+      "name": "ci-cd",
+      "color": "#4F46E5",
+      "description": "GitHub Actions, make targets, lint/type/test gates"
+    },
+    {
+      "name": "k8s",
+      "color": "#0F766E",
+      "description": "k3s manifests, images, probes and cluster release"
+    },
+    {
+      "name": "security",
+      "color": "#991B1B",
+      "description": "Exposure, credentials and edge access control"
+    },
+    {
+      "name": "docs",
+      "color": "#6B7280",
+      "description": "Documentation that is stale, contradictory or missing"
+    },
+    {
+      "name": "agent-workflow",
+      "color": "#7C2D12",
+      "description": "CLAUDE.md, task briefs, verification and repo contracts for agents"
+    },
+    {
+      "name": "tech-debt",
+      "color": "#475569",
+      "description": "Duplication, dead code and cleanup with no behaviour change"
+    },
+    {
+      "name": "research",
+      "color": "#9333EA",
+      "description": "Sourced research deliverables that need reconciliation"
+    },
+    {
+      "name": "urgent-data-fix",
+      "color": "#B91C1C",
+      "description": "Live data defect needing immediate attention"
+    }
+  ],
+  "states": [
+    {
+      "name": "Triage",
+      "group": "backlog",
+      "color": "#6B7280"
+    },
+    {
+      "name": "Backlog",
+      "group": "backlog",
+      "color": "#9CA3AF"
+    },
+    {
+      "name": "Todo",
+      "group": "unstarted",
+      "color": "#3B82F6"
+    },
+    {
+      "name": "In Progress",
+      "group": "started",
+      "color": "#F59E0B"
+    },
+    {
+      "name": "In Review",
+      "group": "started",
+      "color": "#8B5CF6"
+    },
+    {
+      "name": "Blocked",
+      "group": "started",
+      "color": "#EF4444"
+    },
+    {
+      "name": "Done",
+      "group": "completed",
+      "color": "#10B981"
+    },
+    {
+      "name": "Cancelled",
+      "group": "cancelled",
+      "color": "#6B7280"
+    },
+    {
+      "name": "Duplicate",
+      "group": "cancelled",
+      "color": "#9CA3AF"
+    }
+  ]
+}
