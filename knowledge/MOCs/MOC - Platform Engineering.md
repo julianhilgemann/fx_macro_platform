@@ -37,7 +37,7 @@ Running software for other people, repeatably. This is the map that turns
 
 None of this is built. The platform runs under Docker Compose on one machine,
 with no IaC, no cluster, no CI and no metrics. That is a normal starting point and
-a weak portfolio claim, which is why E2 and F1 in [[Platform Delivery Plan]] exist.
+which is why E2 and F1 in [[Platform Delivery Plan]] exist.
 
 The intended path is deliberately narrow: K3s on a single Hetzner node,
 provisioned with Terraform, reconciled by GitOps, observed with

@@ -63,17 +63,11 @@ work.
 
 ## What it is for
 
-Two purposes, held deliberately at once:
+The concrete use case is country-level scoring and a liveability index, served
+through the API. See C3 in [[Platform Delivery Plan]].
 
-- **A real use case.** Country-level scoring and a liveability index, served
-  through the API. See C3 in [[Platform Delivery Plan]].
-- **A portfolio artefact.** A composable open-source data platform, built and
-  operated end to end, to demonstrate platform architecture rather than dashboard
-  construction. See [[MOC - Career and Growth]].
-
-These pull in the same direction more often than they conflict. The second
-demands the platform be legible, documented and genuinely operated, which is
-exactly what the first needs to be trustworthy.
+Everything else exists to make that answer trustworthy rather than merely
+available.
 
 ## Reading order
 

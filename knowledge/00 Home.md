@@ -22,7 +22,7 @@ Two audiences, deliberately in one vault:
 
 ## Start here
 
-- [[Platform Delivery Plan]], the 20 consolidated workstreams. The actionable
+- [[Platform Delivery Plan]], the 19 consolidated workstreams. The actionable
  layer over the 82 GitHub issues.
 - [[FX Macro Platform]], what the platform is and why it exists.
 - [[Current State]], an honest inventory of what works, what is stubbed and what
@@ -39,7 +39,6 @@ Two audiences, deliberately in one vault:
 | [[MOC - Data Engineering]] | Contracts, modelling, correctness |
 | [[MOC - API Design]] | The serving surface |
 | [[MOC - Networking]] | DNS, TLS, proxies, load balancing |
-| [[MOC - Career and Growth]] | Positioning, portfolio, study |
 
 ## Conventions
 

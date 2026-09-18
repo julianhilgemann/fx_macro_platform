@@ -46,7 +46,7 @@ diagrams, and a `docs/adr/` folder that does not exist yet.
 ## Reading order
 
 [[C4 Model]] and [[Architecture Decision Records]] are immediately actionable and
-cheap. The other four are background for reading and interviews.
+cheap. The other four are background reading.
 
 ## Related
 

@@ -27,8 +27,6 @@ block, and then another.
 ## Per phase
 
 - One diagram. C4 L1 or L2, or a pipeline sketch. See [[C4 Model]].
-- One blog post, written from the work rather than from scratch. The ADRs and
-  worklog entries are the raw material.
 
 ## Monthly
 
@@ -49,5 +47,4 @@ points, not hours. Consistency at a sustainable size.
 ## Related
 
 - [[Platform Delivery Plan]]
-- [[MOC - Career and Growth]]
 - [[Current State]]

@@ -5,13 +5,13 @@ status: growing
 tags: [planning, roadmap, delivery]
 created: 2026-09-18
 updated: 2026-09-18
-aliases: [Consolidated To-Dos, 20 Workstreams]
+aliases: [Consolidated To-Dos, 19 Workstreams]
 ---
 
 # Platform Delivery Plan
 
-Twenty workstreams consolidating the 82 GitHub issues in
-[[FX Macro Platform]] with the architect to-do notes. Each workstream is a
+Nineteen workstreams consolidating the 82 GitHub issues in
+[[FX Macro Platform]] with a set of planning notes. Each workstream is a
 chunk of work you can pick up and finish, not a single commit.
 
 The 82 issues are unchanged and remain the atomic record. This note is the layer
@@ -51,11 +51,10 @@ considered done, and which tickets that implies.
 | F1 | Observability stack | Operations | 8 | 2 |
 | F2 | Backup, restore and alerting | Operations | 15 | 4 |
 | G1 | Documentation, ADRs and C4 diagrams | Legibility | 0 | 0 |
-| G2 | Portfolio, positioning and applications | Legibility | 0 | 0 |
-| H1 | Capability track: reading and certifications | Compounding | 0 | 0 |
+| H1 | Reading and study | Compounding | 0 | 0 |
 | H2 | Operating rhythm and roadmap review | Compounding | 0 | 0 |
 
-**282 points of ticketed work** across 82 issues, plus five workstreams (G1, G2,
+**282 points of ticketed work** across 82 issues, plus four workstreams (G1,
 H1, H2 and the non-issue halves of E2 and F1) that are real work with no tickets
 yet.
 
@@ -264,17 +263,17 @@ genuinely urgent and cheap.
 > forbids mounting such a router under `/v1`, and lines 429-430 put **"user
 > accounts, multi-tenant auth"** explicitly out of scope for v1.
 >
-> The spec is right for a single-operator data platform. An identity provider,
-> RBAC and user management exist here to serve the *portfolio* goal, not the
-> platform's own needs: "with RBAC, observability and API-level access control"
-> is a claim in the positioning sentence, and it is only true if this workstream
-> ships.
+> The spec is right for a single-operator data platform.
 >
-> That makes it a deliberate scope decision rather than an oversight, and it
-> should be recorded as the first [[Architecture Decision Records]] entry, with
-> the spec's position quoted and the reason for exceeding it stated. Splitting it
-> matters too: Tailscale and closing the admin plane satisfy the spec and are
-> urgent on their own, while the IdP and RBAC are portfolio work and can wait.
+> That makes this a deliberate scope decision rather than an oversight, and it is
+> worth recording as the first [[Architecture Decision Records]] entry: quote the
+> spec's position and state the reason for exceeding it. Whether to do the
+> identity provider at all should be an explicit choice, because the spec argues
+> against it.
+>
+> The split matters too. Tailscale and closing the admin plane satisfy the spec
+> and are urgent on their own. The identity provider and RBAC are the part that
+> goes beyond it, and can wait.
 
 ### C3 · Country scoring and Liveability API
 
@@ -378,7 +377,7 @@ Start here or alongside A1.
 
 ### E2 · K3s on Hetzner with Terraform
 
-**Why.** The platform is a portfolio claim that currently only runs on one
+**Why.** The platform currently only runs on one
 laptop. Production-shaped deployment is what turns it into evidence.
 
 **Scope**
@@ -441,7 +440,7 @@ environment, and the runbook is one someone else could follow.
 
 ### G1 · Documentation, ADRs and C4 diagrams
 
-**Why.** The work is worth more than the code. A reviewer cannot assess a
+**Why.** The work is worth more than the code. Nobody can assess a
 platform they cannot navigate, and future-you cannot remember why a choice was
 made.
 
@@ -459,44 +458,13 @@ is put together and why, without reading source.
 
 **No tickets yet** · **Depends on** nothing. Can run in parallel with any track.
 
-### G2 · Portfolio, positioning and applications
-
-**Why.** The strategy is explicit: Azure and Fabric for credibility and
-cashflow, the open-source K3s platform as the differentiator. That only converts
-if it is visible and described in architect language.
-
-**Scope**
-- Reframe identity as systems builder and platform architect, not dashboard
-  developer.
-- Update CV and LinkedIn with architect language.
-- One blog post per phase, drawn from real work rather than written from scratch.
-- Target roles: Solutions Architect (Data and Integration), Platform Architect,
-  Cloud Solution Architect (Data and AI), Product or Technical Product Architect,
-  Founding Platform Engineer, Staff Engineer (Data Platform).
-- Avoid as destinations: pure BI, governance, dashboard factories, managing
-  analysts.
-- Apply to startups, scale-ups, Microsoft partners and consultancies.
-
-Use this line:
-
-> I built a composable open-source data platform: Dagster + dbt + Postgres +
-> FastAPI + Metabase + Streamlit + D3.js, containerised on K3s, deployed via
-> Terraform, with RBAC, observability and API-level access control.
-
-**Done when.** CV and LinkedIn say architect, at least one blog post is published
-per completed phase, and applications are going out.
-
-**No tickets yet** · **Depends on** G1 and a deployed E2.
-
----
-
 ## Track H: Compounding
 
-### H1 · Capability track: reading and certifications
+### H1 · Reading and study
 
-**Why.** The plan above is mostly things you already know how to do. The reading
-list is what makes the next tier reachable, and certification is what makes it
-legible to employers.
+**Why.** These notes assume the concepts behind the work. Reading them alongside
+the build is what makes them stick, and several map directly onto workstreams
+above: Salatino and Brikman onto E2, Kleppmann onto A1 and A4.
 
 **Scope**
 - Reading, in this order: *Designing Data-Intensive Applications* (Kleppmann),
@@ -506,8 +474,6 @@ legible to employers.
 - Work through the vault: [[MOC - Networking]], [[MOC - API Design]],
   [[MOC - Architecture]], [[MOC - Platform Engineering]],
   [[MOC - Security and Identity]], [[MOC - Data Engineering]].
-- Consider AZ-305 (Azure Solutions Architect Expert) and DP-600 (Fabric Analytics
-  Engineer).
 
 **Done when.** One book finished and its ideas reflected in an ADR or a diagram,
 not merely read.
@@ -523,7 +489,7 @@ that prevents it.
 - One 3 to 4 hour focused block per week. Non-negotiable.
 - Ship one workstream chunk per block.
 - Write one worklog entry and one ADR per significant decision.
-- One diagram per phase, one blog post per phase.
+- One diagram per phase.
 - Monthly roadmap review: re-read this note, re-rank the tracks, record what
   changed and why.
 
@@ -550,5 +516,4 @@ the rhythm.
 
 - [[FX Macro Platform]]
 - [[Current State]]
-- [[MOC - Career and Growth]]
 - [[Weekly Rhythm]]
