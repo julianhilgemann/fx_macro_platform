@@ -7,7 +7,7 @@ deployment that was decommissioned on 2026-09-18.
 |---|---|
 | Repository | `julianhilgemann/fx_macro_platform` (public) |
 | Board / roadmap | <https://github.com/users/julianhilgemann/projects> |
-| Credential | `.token` (gitignored, fine-grained PAT) |
+| Credential | `.token` (gitignored) — **classic** PAT, scopes `project`, `repo` |
 | MCP server | official `github/github-mcp-server` v1.12.2, tools as `mcp__github__*` |
 
 **Why GitHub instead of a self-hosted tool:** Plane CE cost 12 containers and
