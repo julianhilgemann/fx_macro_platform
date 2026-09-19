@@ -38,8 +38,9 @@ Proving who someone is.
 ## Where the platform stands
 
 Updated 2026-09-19. The admin plane is still open. Every admin surface binds to
-`0.0.0.0`, so Dagster, Metabase, CloudBeaver and the dbt reports remain reachable
-on any network the machine joins. The roadmap ranks this as its most urgent item,
+`0.0.0.0` — see [[Port Binding and Publication]] for why that wildcard is the
+operative detail — so Dagster, Metabase, CloudBeaver and the dbt reports remain
+reachable on any network the machine joins. The roadmap ranks this as its most urgent item,
 and C2 in [[Platform Delivery Plan]] is deliberately placed first for that
 reason.
 

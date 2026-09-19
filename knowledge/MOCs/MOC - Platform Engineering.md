@@ -4,7 +4,7 @@ type: moc
 status: growing
 tags: [moc, platform-engineering, infrastructure]
 created: 2026-09-18
-updated: 2026-09-18
+updated: 2026-09-19
 aliases: [Platform MOC, Infrastructure MOC]
 ---
 
@@ -23,6 +23,8 @@ Running software for other people, repeatably. This is the map that turns
 
 ## Running workloads
 
+- [[Container Networking]], what actually runs today: Compose bridge networks,
+ service-name DNS, and publishing a container port to the host.
 - [[Kubernetes]], the orchestration platform and its object model.
 - [[K3s]], a lightweight Kubernetes distribution, and the intended target here.
 

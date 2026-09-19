@@ -272,6 +272,10 @@ sudo pmset -c sleep 1
 ## Related
 
 - [[Reverse Proxy]] — why `trustedHosts` is needed at all
+- [[NAT and NAT Traversal]] — why no port forwarding was needed on either end
+- [[Port Binding and Publication]] — the loopback-versus-wildcard split in this setup
+- [[Container Networking]] — how the published service ports actually work
+- [[Secure Context]] — why the HTTPS upgrade changed what the phone can do
 - [[Stack Inventory]] — full service and port list
 - [[Current State]] — what is actually working
 - [[FX Macro Platform]]

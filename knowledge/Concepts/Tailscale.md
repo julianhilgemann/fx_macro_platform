@@ -28,7 +28,8 @@ network either one is actually attached to.
 
 ## How it works
 Every device runs a client that holds a keypair and maintains direct encrypted
-links to its peers, falling back to relayed connections when NAT traversal fails.
+links to its peers, falling back to relayed connections when NAT traversal fails
+— see [[NAT and NAT Traversal]] for why neither side needs a forwarding rule.
 Because the links are established outbound, the network topology on either side
 does not matter.
 
@@ -67,6 +68,9 @@ Until then, Tailscale protects the harness and not the platform.
 Setup detail and the traps worth remembering are in [[Remote Access]].
 
 ## Related
+- [[NAT and NAT Traversal]]
+- [[Port Binding and Publication]]
+- [[Secure Context]]
 - [[Remote Access]]
 - [[Reverse Proxy]]
 - [[mTLS]]
