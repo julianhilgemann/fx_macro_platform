@@ -37,6 +37,22 @@
     { name: "Deutschland",role: "D3 · German macro dashboard",      icon: "chart",    href: "http://127.0.0.1:8084",      health: "http://127.0.0.1:8084/health" },
   ];
 
+  // Tiles are published on the host at these ports, so the URLs above are
+  // written against localhost and are correct when the hub is opened on the dev
+  // machine. Opened from any other device (phone over Tailscale, another
+  // laptop), localhost means *that* device, so rewrite the host to whatever we
+  // were served from, leaving host-local browsing untouched.
+  // Scheme stays http: the services are plain HTTP on their published ports,
+  // regardless of how this page itself was loaded.
+  const HOST = location.hostname;
+  const IS_LOCAL = ["", "localhost", "127.0.0.1", "::1", "[::1]"].includes(HOST);
+  if (!IS_LOCAL) {
+    for (const t of TILES) {
+      t.href = t.href.replace("127.0.0.1", HOST);
+      if (t.health) t.health = t.health.replace("127.0.0.1", HOST);
+    }
+  }
+
   const ICONS = {
     layers:   `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 2 7l10 5 10-5-10-5Z"/><path d="m2 12 10 5 10-5"/><path d="m2 17 10 5 10-5"/></svg>`,
     chart:    `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/></svg>`,
