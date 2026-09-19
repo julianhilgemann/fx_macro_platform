@@ -4,7 +4,7 @@ type: moc
 status: growing
 tags: [moc, networking]
 created: 2026-09-18
-updated: 2026-09-18
+updated: 2026-09-19
 aliases: [Networking MOC]
 ---
 
@@ -23,6 +23,10 @@ currently the least built part of [[FX Macro Platform]].
  terminates.
 - [[Load Balancing]], spreading traffic across replicas. Becomes relevant only
  once something runs more than one copy.
+- [[Tailscale]], a WireGuard mesh VPN. Private reachability without publishing a
+ port, and the transport behind off-network access here.
+- [[Remote Access]], reaching the dev machine from off-network over Tailscale.
+ Two mechanisms: a proxied HTTPS harness, and the raw published ports.
 
 ## Why this map matters now
 
@@ -36,7 +40,9 @@ and E2 in [[Platform Delivery Plan]].
 
 Read [[DNS]] and [[TLS]] first, because almost every other networking decision
 assumes them. Then [[Reverse Proxy]], which is where the two combine. Leave
-[[Load Balancing]] until you actually run replicas.
+[[Load Balancing]] until you actually run replicas. [[Tailscale]] is the
+pragmatic shortcut for reaching a dev machine before any of this is built out —
+see [[Remote Access]].
 
 ## Related
 

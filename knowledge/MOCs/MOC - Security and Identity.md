@@ -4,7 +4,7 @@ type: moc
 status: growing
 tags: [moc, security, identity]
 created: 2026-09-18
-updated: 2026-09-18
+updated: 2026-09-19
 aliases: [Security MOC, Identity MOC]
 ---
 
@@ -32,17 +32,30 @@ Proving who someone is.
 - [[mTLS]], both sides present certificates. For service-to-service trust.
 - [[OWASP Top 10]], the recurring vulnerability classes, and a review checklist
  before exposing anything.
+- [[Tailscale]], a private network in front of a service that is not ready to be
+ public. Device identity, with no identity provider required.
 
 ## Where the platform stands
 
-There is no authentication anywhere. Every admin surface binds to `0.0.0.0`, so
-Dagster, Metabase, CloudBeaver and the dbt reports are open to the local network.
-The roadmap ranks this as its most urgent item, and C2 in
-[[Platform Delivery Plan]] is deliberately placed first for that reason.
+Updated 2026-09-19. The admin plane is still open. Every admin surface binds to
+`0.0.0.0`, so Dagster, Metabase, CloudBeaver and the dbt reports remain reachable
+on any network the machine joins. The roadmap ranks this as its most urgent item,
+and C2 in [[Platform Delivery Plan]] is deliberately placed first for that
+reason.
 
-The staged intent is: Tailscale to close the admin plane immediately, then an
-identity provider for real users, then RBAC, then mTLS between internal services
-if warranted.
+The first step of the staged intent has been taken, but only halfway. Tailscale
+is installed on the laptop and the phone, and the DSH harness — which already
+binds loopback — is fronted by `tailscale serve` over HTTPS, so it is reachable
+off-network without being public. The admin plane itself has **not** moved: those
+ports still bind `0.0.0.0`, so Tailscale currently protects the harness rather
+than the platform. Moving them behind the tailnet is the obvious next increment,
+and it needs no identity provider to be worthwhile.
+
+The remaining staged order is unchanged: finish closing the admin plane with
+Tailscale, then an identity provider for real users, then RBAC, then mTLS between
+internal services if warranted.
+
+See [[Remote Access]] for the working setup, and [[Tailscale]] for the concept.
 
 ## Reading order
 

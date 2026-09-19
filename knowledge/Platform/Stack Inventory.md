@@ -16,7 +16,9 @@ What runs, where it listens, and what it is for. Local development topology as o
 ## Services and host ports
 
 Every published port binds to `0.0.0.0`, so all of these are reachable from the
-local network, not only from the machine. See C2 in [[Platform Delivery Plan]].
+local network, not only from the machine. From off-network they are also
+reachable over the tailnet — see [[Remote Access]]. See C2 in
+[[Platform Delivery Plan]].
 
 | Host port | Service | Purpose |
 |---|---|---|
@@ -70,7 +72,10 @@ implies completeness:
 - CI or CD of any kind
 - An identity provider, and therefore any user accounts or roles
 - Prometheus, Grafana or Loki
-- An API gateway, reverse proxy or TLS termination
+- An API gateway, and any reverse proxy or TLS termination for the *public*
+ stack. Note that `tailscale serve` now fronts the DSH harness on the tailnet
+ with real TLS, but nothing in the table above sits behind it and nothing is
+ public. See [[Remote Access]].
 - Object storage for backups
 
 Every one of those is planned. See [[Platform Delivery Plan]].
@@ -79,6 +84,8 @@ Every one of those is planned. See [[Platform Delivery Plan]].
 
 - [[FX Macro Platform]]
 - [[Current State]]
+- [[Remote Access]]
+- [[Tailscale]]
 - [[Kubernetes]]
 - [[Terraform]]
 - [[Observability Stack]]
