@@ -22,7 +22,9 @@ describes and the date it became known.
 providers  →  immutable raw landing  →  Postgres warehouse  →  dbt models  →  serving layer
 ```
 
-- **Ingest** pulls from FRED, the ECB and the Bundesbank. Responses land as
+- **Ingest** pulls from FRED, the ECB and the Bundesbank, plus one deliberately
+  non-official feed: ecb-watch.eu's market-implied ECB rate probabilities, kept
+  only to score the platform's own OIS-implied engine against. Responses land as
   append-only files indexed by content hash, so re-fetching unchanged data is a
   no-op rather than a duplicate.
 - **Warehouse** is Postgres, storing observations at a bitemporal grain: the
@@ -124,6 +126,7 @@ tests/           tests outside the dbt and Dagster suites
 | How the pieces fit | [knowledge vault](knowledge/00%20Home.md) and its maps of content |
 | Upstream provider endpoints and shapes | [`docs/api-calls.md`](docs/api-calls.md) |
 | The migration off the earlier DuckDB slice | [`docs/migration-plan.md`](docs/migration-plan.md) |
+| Short-term euro rates and market-implied ECB probabilities | [`docs/ecb-watch.md`](docs/ecb-watch.md) |
 | Open work items | [GitHub issues](https://github.com/julianhilgemann/fx_macro_platform/issues) and the [Platform board](https://github.com/users/julianhilgemann/projects/3) |
 
 Where this README and `platform-spec.md` disagree, the spec wins.

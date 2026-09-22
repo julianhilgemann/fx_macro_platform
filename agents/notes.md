@@ -135,4 +135,21 @@ infra, ingest, dbt, or the API. The authoritative spec is
     `docker exec <c> grep <new-symbol> <path>` rather than trusting the build.
     A transient `error getting credentials ... Module Directory Service error`
     from buildkit is the macOS credential helper, not a broken image — retry.
+25. **The Dagster dbt assets read a manifest from a shared volume, not the
+    image.** `docker-compose.yml` mounts `dbt_target` at `/opt/app/dbt/target`,
+    so `@dbt_assets` — and therefore the whole asset graph in the UI — reflects
+    whatever manifest was last written *there*. Rebuilding the image does not
+    add new dbt models (the ingest assets do appear, since they come from the
+    image). After adding models/seeds, regenerate and reload:
+    `docker compose exec -T dagster-webserver /opt/app/.venv/bin/dbt parse --project-dir /opt/app/dbt --profiles-dir /opt/app/dbt`
+    then `docker compose restart dagster-webserver dagster-daemon`. Verify with
+    `curl -s -X POST http://127.0.0.1:3000/graphql -H 'Content-Type: application/json' -d '{"query":"{ assetNodes { assetKey { path } } }"}'`.
+    Related: `bash -l` inside these containers re-sources the profile and drops
+    the image's `ENV PATH`, so `dbt` only resolves via the explicit
+    `/opt/app/.venv/bin/dbt` (the `dagster` CLI likewise).
+26. **`dagster asset materialize` needs `-m` in this stack.** Without a module
+    or workspace flag it fails with "Invalid set of CLI arguments for loading
+    repository/job". Use
+    `dagster asset materialize -m orchestration.definitions --select <asset>`
+    from a container (with the venv path from #25).
 
