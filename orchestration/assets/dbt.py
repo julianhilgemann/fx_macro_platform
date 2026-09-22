@@ -36,6 +36,7 @@ class _FxMacroDbtTranslator(DagsterDbtTranslator):
                         AssetKey("raw_fred"),
                         AssetKey("raw_ecb"),
                         AssetKey("raw_bundesbank"),
+                        AssetKey("raw_ecbwatch"),
                     ]
                 )
         return spec

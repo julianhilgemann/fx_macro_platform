@@ -24,3 +24,15 @@ def raw_bundesbank(context: AssetExecutionContext) -> dict:
     stats = land_source("bundesbank")
     context.add_output_metadata(stats)
     return stats
+
+
+@asset(
+    description="Fetch and land the ecb-watch.eu market-implied ECB rate "
+                "probabilities in raw.source_fetch. Third-party (not an official "
+                "ECB/Bundesbank flow) — ingested as a validation series for the "
+                "local OIS-implied engine.",
+)
+def raw_ecbwatch(context: AssetExecutionContext) -> dict:
+    stats = land_source("ecbwatch")
+    context.add_output_metadata(stats)
+    return stats

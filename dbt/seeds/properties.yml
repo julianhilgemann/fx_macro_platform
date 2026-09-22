@@ -19,6 +19,28 @@ seeds:
               arguments:
                 values: ['D', 'W', 'M', 'Q', 'A']
 
+  - name: ecb_meeting_calendar
+    description: >
+      ECB Governing Council monetary policy *decision* days (Day 2 of each
+      meeting), transcribed from the official ECB calendar at
+      https://www.ecb.europa.eu/press/calendars/mgcgc/html/index.en.html.
+      The ECB publishes no machine-readable meeting calendar, so this stays a
+      hand-maintained seed. Non-monetary-policy and General Council meetings are
+      deliberately excluded — they carry no rate decision. The most recent past
+      decision day is retained as the probability engine's anchor.
+    config:
+      column_types:
+        meeting_date: date
+    columns:
+      - name: meeting_date
+        description: "Rate-decision day (Day 2 of the Governing Council meeting)."
+        tests: [unique, not_null]
+      - name: meeting_type
+        tests:
+          - accepted_values:
+              arguments:
+                values: ['monetary_policy']
+
   - name: country_profile_mvp
     description: >
       Hand-curated country profile for the liveability MVP (19 OECD-core countries).

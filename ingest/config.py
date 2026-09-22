@@ -38,6 +38,13 @@ BUNDESBANK_BASE_URL = "https://api.statistiken.bundesbank.de/rest/data"
 # Source #3: ECB Data Portal (SDW) SDMX REST API. No key required.
 ECB_SDW_BASE_URL = "https://data-api.ecb.europa.eu/service/data"
 
+# Source #4: ecb-watch.eu — a third-party, keyless JSON feed of *market-implied*
+# ECB rate probabilities (the CME-FedWatch-style decomposition of dated €STR
+# futures into 25bp steps). It is deliberately NOT an official source: it is
+# ingested as a validation series so the local OIS-implied engine can be scored
+# against an independent implementation. See the ECB Watch dashboard page.
+ECBWATCH_BASE_URL = "https://ecb-watch.eu/probabilities"
+
 # "synthetic" needs no key and generates deterministic FRED-shaped data so the
 # whole pipeline runs end-to-end. "fred" hits the real API.
 FETCH_MODE: str = os.getenv("FX_FETCH_MODE") or ("fred" if FRED_API_KEY else "synthetic")
@@ -194,6 +201,89 @@ SERIES: list[Series] = [
     Series("ECB_UNRATE",    "ecb", "monthly", "ea_unemployment",
            provider_key="LFSI/M.U2.S.UNEHRT.TOTAL0.15_74.T"),  # EA unemployment rate (15-74, SA)
 ]
+
+# --- Euro short-term rate + ECB policy anchor (ECB SDW, daily) ---------------
+# The short-term euro lens. €STR (EST) is the euro risk-free overnight rate; the
+# same dataset also carries its compounded averages, trading volume, transaction
+# count, active-bank count and the 25th/75th volume percentiles.
+#
+# IMPORTANT — the compounded averages (SUFFIX .CR) are BACKWARD-looking: they
+# compound *realised* overnight fixings over the trailing 1w/1m/3m/6m/12m. They
+# describe where the euro money market *is*, never where it is expected to go.
+# The forward-looking layer is the OIS curve below; do not feed the compounded
+# series into the implied-probability model.
+ESTR_SERIES: list[Series] = [
+    Series("ECB_ESTR", "ecb", "daily", "ecb_estr",
+           provider_key="EST/B.EU000A2X2A25.WT"),            # €STR headline fixing
+    Series("ECB_ESTR_1W", "ecb", "daily", "ecb_estr_comp_1w",
+           provider_key="EST/B.EU000A2QQF16.CR"),            # compounded 1 week
+    Series("ECB_ESTR_1M", "ecb", "daily", "ecb_estr_comp_1m",
+           provider_key="EST/B.EU000A2QQF24.CR"),            # compounded 1 month
+    Series("ECB_ESTR_3M", "ecb", "daily", "ecb_estr_comp_3m",
+           provider_key="EST/B.EU000A2QQF32.CR"),            # compounded 3 months
+    Series("ECB_ESTR_6M", "ecb", "daily", "ecb_estr_comp_6m",
+           provider_key="EST/B.EU000A2QQF40.CR"),            # compounded 6 months
+    Series("ECB_ESTR_12M", "ecb", "daily", "ecb_estr_comp_12m",
+           provider_key="EST/B.EU000A2QQF57.CR"),            # compounded 12 months
+    Series("ECB_ESTR_INDEX", "ecb", "daily", "ecb_estr_comp_index",
+           provider_key="EST/B.EU000A2QQF08.CI"),            # compounded index (2019-10-01=100)
+    Series("ECB_ESTR_VOL", "ecb", "daily", "ecb_estr_volume",
+           provider_key="EST/B.EU000A2X2A25.TT"),            # total traded volume (EUR mn)
+    Series("ECB_ESTR_TXNS", "ecb", "daily", "ecb_estr_transactions",
+           provider_key="EST/B.EU000A2X2A25.NT"),            # number of transactions
+    Series("ECB_ESTR_BANKS", "ecb", "daily", "ecb_estr_banks",
+           provider_key="EST/B.EU000A2X2A25.NB"),            # number of active banks
+    Series("ECB_ESTR_P25", "ecb", "daily", "ecb_estr_p25",
+           provider_key="EST/B.EU000A2X2A25.R25"),           # rate at 25th volume percentile
+    Series("ECB_ESTR_P75", "ecb", "daily", "ecb_estr_p75",
+           provider_key="EST/B.EU000A2X2A25.R75"),           # rate at 75th volume percentile
+    # The policy anchor off the ECB's own books (the FRED ECBDFR mirror stays for
+    # history; this is the same rate straight from the source).
+    Series("ECB_DFR", "ecb", "daily", "ecb_dfr",
+           provider_key="FM/D.U2.EUR.4F.KR.DFR.LEV"),        # deposit facility rate
+]
+SERIES.extend(ESTR_SERIES)
+
+# --- Euro OIS curve, by maturity bucket (ECB MMSR, ~6-weekly) ----------------
+# ECB Money Market Statistical Reporting: MM_SEGMENT 'O' = "Euro money market -
+# Overnight Index Swap"; DATA_TYPE_MM 'WR' = weighted average rate of the OIS
+# actually traded in that bucket. This is the forward-looking input the implied-
+# probability model consumes.
+#
+# CAVEATS (they matter and are surfaced again in the mart):
+#   * these are *bucket averages*, not a meeting-dated swap curve;
+#   * publication lags live rates by roughly six to eight weeks and lands in
+#     coarse steps, so probabilities built from it are *indicative*, not tradeable;
+#   * buckets are 1m/2m/3m/6m/9m/12m/2y — enough to span the next few meetings.
+# Counterparty sector S1ZV ("wholesale" / all reporting sectors) is the aggregate
+# read; the per-sector decompositions live in MMSR/EMMS but are not needed here.
+_OIS_MATURITY_CODES: list[tuple[str, str]] = [
+    ("1M", "FC"), ("2M", "FD"), ("3M", "FE"), ("6M", "FF"),
+    ("9M", "FG"), ("12M", "FH"), ("2Y", "FI"),
+]
+EA_OIS_SERIES: list[Series] = [
+    Series(
+        f"EA_OIS_{label}", "ecb", "daily", f"ea_ois_{label.lower()}",
+        provider_key=(
+            "MMSR/B.U2._X._Z.S1ZV._Z.O._X.WR._X."
+            f"{code}._Z._Z.EUR._Z"
+        ),
+    )
+    for label, code in _OIS_MATURITY_CODES
+]
+SERIES.extend(EA_OIS_SERIES)
+
+# --- Market-implied ECB rate probabilities (ecb-watch.eu) -------------------
+# ONE endpoint, many meetings: the payload is
+#   {"abs_data": {"<meeting date>": {"<rate>": <probability>, ...}, ...},
+#    "current_rate": ..., "metadata": {...}}
+# so it is stored verbatim as JSON and exploded in
+# stg_ecbwatch__probabilities. `source="ecbwatch"` keeps it visibly separate from
+# the official flows in every mart.
+ECBWATCH_SERIES: list[Series] = [
+    Series("ECBWATCH_PROBS", "ecbwatch", "daily", "ecbwatch_probs"),
+]
+SERIES.extend(ECBWATCH_SERIES)
 
 # --- German Bund term structure (Bundesbank BBSIS, daily) --------------------
 # The Svensson-fitted curve for listed Federal securities, published per residual

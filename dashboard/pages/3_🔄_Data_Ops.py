@@ -308,7 +308,7 @@ with a1:
 with a2:
     st.markdown("**Update everything**")
     st.caption(
-        "All sources (FRED, ECB, Bundesbank) then the **full** dbt build — the same "
+        "All sources (FRED, ECB, Bundesbank, ecb-watch) then the **full** dbt build — the same "
         "work as the 06:00 schedule, on demand."
     )
     if st.button("⟳ Trigger full pipeline", width="stretch", disabled=st.session_state["polling"]):

@@ -21,6 +21,7 @@ from psycopg.types.json import Jsonb
 from ingest.config import (
     BUNDESBANK_BASE_URL,
     ECB_SDW_BASE_URL,
+    ECBWATCH_BASE_URL,
     FETCH_MODE,
     FRED_BASE_URL,
     PG_DB,
@@ -36,7 +37,12 @@ from ingest.config import (
 from ingest.fetch import FetchResult, fetch_series
 from ingest.parse import parse_bundesbank_csv, parse_ecb_sdmx_csv
 
-_BASE_URLS = {"fred": FRED_BASE_URL, "bundesbank": BUNDESBANK_BASE_URL, "ecb": ECB_SDW_BASE_URL}
+_BASE_URLS = {
+    "fred": FRED_BASE_URL,
+    "bundesbank": BUNDESBANK_BASE_URL,
+    "ecb": ECB_SDW_BASE_URL,
+    "ecbwatch": ECBWATCH_BASE_URL,
+}
 
 INSERT_SQL = f"""
 INSERT INTO {RAW_TABLE}

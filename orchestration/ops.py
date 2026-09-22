@@ -47,6 +47,7 @@ _SOURCE_TAGS = {
     "fred": "ops_refresh_fred",
     "ecb": "ops_refresh_ecb",
     "bundesbank": "ops_refresh_bundesbank",
+    "ecbwatch": "ops_refresh_ecbwatch",
 }
 
 

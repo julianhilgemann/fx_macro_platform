@@ -132,3 +132,70 @@ models:
         description: "% change vs the last period before the current month."
       - name: ytd_pct
         description: "% change vs the last period before the current year."
+
+  - name: fct_ecb_meeting_probabilities
+    description: >
+      Market-implied ECB rate probabilities from the official euro OIS curve
+      (ECB MMSR buckets), using the CME-FedWatch decomposition: interpolate the
+      OIS curve to the midpoint of each reserve maintenance period, difference
+      consecutive period rates into 25bp steps, then convolve the per-meeting
+      splits into a distribution of the rate level after each meeting. Grain is
+      (meeting_date, scenario_rate) and the probabilities of a meeting sum to 1.
+      Indicative, not tradeable — MMSR bucket averages lag live pricing by
+      roughly six to eight weeks; check `staleness_days` on every row.
+    columns:
+      - name: engine
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['local_ois']
+      - name: meeting_date
+        tests: [not_null]
+      - name: scenario_rate
+        description: "Candidate deposit facility rate after this meeting, in percent."
+        tests: [not_null]
+      - name: probability
+        description: "Probability mass on this rate level after this meeting (fraction)."
+        tests: [not_null]
+      - name: expected_change_bp
+        description: "Expected policy change at this meeting implied by the curve, in bp."
+      - name: prob_higher_step
+        description: "Probability the meeting lands on the upper of the two adjacent 25bp steps."
+      - name: current_rate
+        description: "Deposit facility rate the engine anchored on."
+      - name: curve_as_of
+        description: "Newest OIS observation backing the curve — the real freshness clock."
+        tests: [not_null]
+      - name: staleness_days
+        description: "Days between the curve snapshot and the build date."
+      - name: period_ois_rate
+        description: "Interpolated OIS rate for the maintenance period the meeting opens."
+
+  - name: fct_ecb_probability_crosscheck
+    description: >
+      The local OIS-implied engine scored against ecb-watch.eu, which prices
+      dated €STR futures. Grain (meeting_date, scenario_rate). `diff_pp` is local
+      minus ecb-watch in percentage points; `total_variation_pp` is
+      0.5 * sum(|Δ|) over the meeting — the total probability mass that would
+      have to move to turn one distribution into the other, i.e. the headline
+      accuracy metric for the local engine. `matched = false` marks scenarios
+      priced by only one of the two engines, which is itself a finding: usually
+      the official curve is too stale to see a scenario the futures market
+      already prices.
+    columns:
+      - name: meeting_date
+        tests: [not_null]
+      - name: scenario_rate
+        tests: [not_null]
+      - name: diff_pp
+        description: "local minus ecb-watch, in percentage points."
+      - name: total_variation_pp
+        description: "Total variation distance between the two distributions, in points."
+      - name: matched
+        description: "True when both engines price this scenario."
+        tests: [not_null]
+      - name: source_version
+        description: "ecb-watch feed version (their `metadata.version`)."
+      - name: source_last_updated
+        description: "ecb-watch's own last-updated stamp — how fresh the cross-check is."

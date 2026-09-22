@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import random
+import time
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 
@@ -18,6 +19,7 @@ import requests
 from ingest.config import (
     BUNDESBANK_BASE_URL,
     ECB_SDW_BASE_URL,
+    ECBWATCH_BASE_URL,
     FETCH_MODE,
     FRED_API_KEY,
     FRED_BASE_URL,
@@ -27,6 +29,32 @@ from ingest.config import (
 )
 
 SYNTHETIC = FETCH_MODE == "synthetic"
+
+#: The ECB Data Portal intermittently answers 5xx / drops the connection under
+#: load (observed repeatedly while wiring the €STR + MMSR series). A bounded
+#: retry keeps one flaky response from landing a null payload for the day.
+_RETRY_STATUS = {429, 500, 502, 503, 504}
+_RETRY_ATTEMPTS = 3
+_RETRY_BACKOFF_S = 2.0
+
+
+def _get_with_retry(url: str, params: dict, *, attempts: int = _RETRY_ATTEMPTS):
+    """GET with bounded retries on 5xx/429 and transient connection errors."""
+    last_exc: Exception | None = None
+    for attempt in range(1, attempts + 1):
+        try:
+            resp = requests.get(url, params=params, timeout=60)
+            if resp.status_code not in _RETRY_STATUS:
+                return resp
+            print(f"    retry {attempt}/{attempts}: HTTP {resp.status_code} from {url}")
+        except requests.RequestException as exc:
+            last_exc = exc
+            print(f"    retry {attempt}/{attempts}: {type(exc).__name__} from {url}")
+        if attempt < attempts:
+            time.sleep(_RETRY_BACKOFF_S * attempt)
+    if last_exc is not None:
+        raise last_exc
+    return resp
 
 
 @dataclass(frozen=True)
@@ -87,7 +115,7 @@ def fetch_ecb(series: Series) -> FetchResult:
     # series.key includes the dataset, e.g. "FM/B.U2.EUR.4F.KR.MRR_FR.LEV".
     url = f"{ECB_SDW_BASE_URL}/{series.key}"
     params = {"startPeriod": HISTORY_START.isoformat(), "format": "csvdata"}
-    resp = requests.get(url, params=params, timeout=30)
+    resp = _get_with_retry(url, params)
     resp.raise_for_status()
     return FetchResult(
         source=series.source,
@@ -101,7 +129,33 @@ def fetch_ecb(series: Series) -> FetchResult:
     )
 
 
-REAL_CLIENTS = {"fred": fetch_fred, "bundesbank": fetch_bundesbank, "ecb": fetch_ecb}
+def fetch_ecbwatch(series: Series) -> FetchResult:
+    """ecb-watch.eu market-implied probabilities — one endpoint, one document.
+
+    The whole feed is a single JSON object keyed by meeting date, so the series
+    key is unused; the payload is landed verbatim and exploded in dbt.
+    """
+    params: dict = {}
+    resp = _get_with_retry(ECBWATCH_BASE_URL, params)
+    resp.raise_for_status()
+    return FetchResult(
+        source=series.source,
+        resource=series.series_id,
+        request_url=ECBWATCH_BASE_URL,
+        request_params=params,
+        http_status=resp.status_code,
+        content_type=resp.headers.get("content-type"),
+        body=resp.content,
+        ext="json",
+    )
+
+
+REAL_CLIENTS = {
+    "fred": fetch_fred,
+    "bundesbank": fetch_bundesbank,
+    "ecb": fetch_ecb,
+    "ecbwatch": fetch_ecbwatch,
+}
 
 
 # --- synthetic (FRED-shaped JSON, any source) -----------------------------
@@ -223,10 +277,42 @@ def synth_payload(series: Series, as_of: date) -> FetchResult:
     )
 
 
+def synth_ecbwatch_payload(series: Series, as_of: date) -> FetchResult:
+    """Shape-correct stand-in for the ecb-watch feed in synthetic mode.
+
+    Faking a FRED-shaped body here would make the staging model silently read
+    nothing, so the synthetic payload mirrors the real contract
+    (`abs_data` keyed by meeting date) with a trivially flat distribution.
+    """
+    meetings = [as_of + timedelta(days=45 * (i + 1)) for i in range(2)]
+    abs_data = {
+        d.isoformat(): {"2.50%": 1.0, "2.75%": 0.0}
+        for d in meetings
+    }
+    payload = {
+        "abs_data": abs_data,
+        "current_rate": 2.50,
+        "metadata": {"last_updated": as_of.isoformat(), "version": "synthetic",
+                     "status": "synthetic", "data_sources": "synthetic"},
+    }
+    return FetchResult(
+        source=series.source,
+        resource=series.series_id,
+        request_url="synthetic",
+        request_params={"mode": "synthetic"},
+        http_status=200,
+        content_type="application/json",
+        body=json.dumps(payload, indent=2).encode("utf-8"),
+        ext="json",
+    )
+
+
 # --- driver ----------------------------------------------------------------
 
 def fetch_series(series: Series, as_of: date) -> FetchResult:
     if SYNTHETIC:
+        if series.source == "ecbwatch":
+            return synth_ecbwatch_payload(series, as_of)
         return synth_payload(series, as_of)
     client = REAL_CLIENTS.get(series.source)
     if client is None:

@@ -130,3 +130,83 @@ def load_series_period_metrics(series_id: str, grain: str) -> pd.DataFrame:
     for col in ("value", "mom_pct", "qoq_pct", "yoy_pct", "mtd_pct", "ytd_pct"):
         df[col] = pd.to_numeric(df[col], errors="coerce")
     return df
+
+
+# --- ECB Watch (implied rate probabilities) --------------------------------
+
+def load_ecb_probabilities() -> pd.DataFrame:
+    """Local OIS-implied ECB rate probabilities (marts.fct_ecb_meeting_probabilities).
+
+    One row per (meeting_date, scenario_rate). Empty until the mart is built.
+    """
+    df = _query_df(
+        """
+        SELECT meeting_index, meeting_date, days_to_meeting, scenario_rate,
+               probability, expected_change_bp, prob_higher_step, current_rate,
+               curve_as_of, staleness_days, period_ois_rate, period_midpoint,
+               period_midpoint_years
+        FROM marts.fct_ecb_meeting_probabilities
+        ORDER BY meeting_date, scenario_rate
+        """
+    )
+    if df.empty:
+        return df
+    for col in ("meeting_date", "curve_as_of", "period_midpoint"):
+        df[col] = pd.to_datetime(df[col])
+    for col in ("scenario_rate", "probability", "expected_change_bp",
+                "prob_higher_step", "current_rate", "period_ois_rate",
+                "period_midpoint_years"):
+        df[col] = pd.to_numeric(df[col], errors="coerce")
+    return df
+
+
+def load_ecb_probability_crosscheck() -> pd.DataFrame:
+    """Local engine vs ecb-watch.eu (marts.fct_ecb_probability_crosscheck).
+
+    Empty until both the ecbwatch source and the mart exist.
+    """
+    df = _query_df(
+        """
+        SELECT meeting_date, scenario_rate, local_probability,
+               ecbwatch_probability, diff_pp, total_variation_pp, matched,
+               ecbwatch_current_rate, source_version, source_last_updated,
+               source_data_sources, ecbwatch_known_at
+        FROM marts.fct_ecb_probability_crosscheck
+        ORDER BY meeting_date, scenario_rate
+        """
+    )
+    if df.empty:
+        return df
+    for col in ("meeting_date", "ecbwatch_known_at"):
+        df[col] = pd.to_datetime(df[col])
+    for col in ("scenario_rate", "local_probability", "ecbwatch_probability",
+                "diff_pp", "total_variation_pp", "ecbwatch_current_rate"):
+        df[col] = pd.to_numeric(df[col], errors="coerce")
+    return df
+
+
+def load_ecb_short_rate_snapshot() -> pd.DataFrame:
+    """Newest value per euro short-rate series, for the page's context strip.
+
+    Returns (series_id, obs_date, value) across the €STR / policy / OIS set.
+    """
+    df = _query_df(
+        """
+        SELECT DISTINCT ON (series_id)
+               series_id, obs_date, value
+        FROM marts.fct_macro_observation_latest
+        WHERE series_id IN (
+            'ECB_ESTR', 'ECB_ESTR_1W', 'ECB_ESTR_1M', 'ECB_ESTR_3M',
+            'ECB_ESTR_6M', 'ECB_ESTR_12M', 'ECB_ESTR_VOL', 'ECB_ESTR_BANKS',
+            'ECB_DFR',
+            'EA_OIS_1M', 'EA_OIS_2M', 'EA_OIS_3M', 'EA_OIS_6M',
+            'EA_OIS_9M', 'EA_OIS_12M', 'EA_OIS_2Y'
+        )
+        ORDER BY series_id, obs_date DESC
+        """
+    )
+    if df.empty:
+        return df
+    df["obs_date"] = pd.to_datetime(df["obs_date"])
+    df["value"] = pd.to_numeric(df["value"], errors="coerce")
+    return df

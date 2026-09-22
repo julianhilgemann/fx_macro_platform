@@ -109,3 +109,24 @@ DE_TS_27Y,bundesbank,BBSIS/D.I.ZST.ZI.EUR.S1311.B.A604.R27XX.R.A.A._Z._Z.A,Germa
 DE_TS_28Y,bundesbank,BBSIS/D.I.ZST.ZI.EUR.S1311.B.A604.R28XX.R.A.A._Z._Z.A,German Bund Term Structure 28Y,Svensson-fitted term structure of listed German federal securities residual maturity 28.0 years,percent,D,false,DE,yield,true
 DE_TS_29Y,bundesbank,BBSIS/D.I.ZST.ZI.EUR.S1311.B.A604.R29XX.R.A.A._Z._Z.A,German Bund Term Structure 29Y,Svensson-fitted term structure of listed German federal securities residual maturity 29.0 years,percent,D,false,DE,yield,true
 DE_TS_30Y,bundesbank,BBSIS/D.I.ZST.ZI.EUR.S1311.B.A604.R30XX.R.A.A._Z._Z.A,German Bund Term Structure 30Y,Svensson-fitted term structure of listed German federal securities residual maturity 30.0 years,percent,D,false,DE,yield,true
+ECB_ESTR,ecb,EST/B.EU000A2X2A25.WT,€STR Euro Short-Term Rate,Volume-weighted trimmed mean rate of unsecured overnight euro borrowing by financial corporations,percent,D,false,EA,money_market,true
+ECB_ESTR_1W,ecb,EST/B.EU000A2QQF16.CR,€STR Compounded 1W,Backward-looking compounded average of realised €STR fixings over one week,percent,D,false,EA,money_market,true
+ECB_ESTR_1M,ecb,EST/B.EU000A2QQF24.CR,€STR Compounded 1M,Backward-looking compounded average of realised €STR fixings over one month,percent,D,false,EA,money_market,true
+ECB_ESTR_3M,ecb,EST/B.EU000A2QQF32.CR,€STR Compounded 3M,Backward-looking compounded average of realised €STR fixings over three months,percent,D,false,EA,money_market,true
+ECB_ESTR_6M,ecb,EST/B.EU000A2QQF40.CR,€STR Compounded 6M,Backward-looking compounded average of realised €STR fixings over six months,percent,D,false,EA,money_market,true
+ECB_ESTR_12M,ecb,EST/B.EU000A2QQF57.CR,€STR Compounded 12M,Backward-looking compounded average of realised €STR fixings over twelve months,percent,D,false,EA,money_market,true
+ECB_ESTR_INDEX,ecb,EST/B.EU000A2QQF08.CI,€STR Compounded Index,Compounded €STR index with 1 October 2019 equal to 100,index,D,false,EA,money_market,true
+ECB_ESTR_VOL,ecb,EST/B.EU000A2X2A25.TT,€STR Total Volume,Total volume of unsecured overnight euro borrowing underlying the €STR fixing,EUR millions,D,false,EA,money_market,true
+ECB_ESTR_TXNS,ecb,EST/B.EU000A2X2A25.NT,€STR Transaction Count,Number of transactions underlying the €STR fixing,count,D,false,EA,money_market,true
+ECB_ESTR_BANKS,ecb,EST/B.EU000A2X2A25.NB,€STR Active Banks,Number of active banks reporting the transactions underlying the €STR fixing,count,D,false,EA,money_market,true
+ECB_ESTR_P25,ecb,EST/B.EU000A2X2A25.R25,€STR 25th Percentile,Rate at the 25th percentile of volume in the €STR calculation,percent,D,false,EA,money_market,true
+ECB_ESTR_P75,ecb,EST/B.EU000A2X2A25.R75,€STR 75th Percentile,Rate at the 75th percentile of volume in the €STR calculation,percent,D,false,EA,money_market,true
+ECB_DFR,ecb,FM/D.U2.EUR.4F.KR.DFR.LEV,ECB Deposit Facility Rate,ECB deposit facility rate - corridor floor and the policy anchor for implied probabilities,percent,D,false,EA,policy_rate,true
+EA_OIS_1M,ecb,MMSR/B.U2._X._Z.S1ZV._Z.O._X.WR._X.FC._Z._Z.EUR._Z,Euro OIS 1M,ECB MMSR weighted average rate on euro overnight index swaps in the one month bucket,percent,D,false,EA,money_market,true
+EA_OIS_2M,ecb,MMSR/B.U2._X._Z.S1ZV._Z.O._X.WR._X.FD._Z._Z.EUR._Z,Euro OIS 2M,ECB MMSR weighted average rate on euro overnight index swaps in the two month bucket,percent,D,false,EA,money_market,true
+EA_OIS_3M,ecb,MMSR/B.U2._X._Z.S1ZV._Z.O._X.WR._X.FE._Z._Z.EUR._Z,Euro OIS 3M,ECB MMSR weighted average rate on euro overnight index swaps in the three month bucket,percent,D,false,EA,money_market,true
+EA_OIS_6M,ecb,MMSR/B.U2._X._Z.S1ZV._Z.O._X.WR._X.FF._Z._Z.EUR._Z,Euro OIS 6M,ECB MMSR weighted average rate on euro overnight index swaps in the six month bucket,percent,D,false,EA,money_market,true
+EA_OIS_9M,ecb,MMSR/B.U2._X._Z.S1ZV._Z.O._X.WR._X.FG._Z._Z.EUR._Z,Euro OIS 9M,ECB MMSR weighted average rate on euro overnight index swaps in the nine month bucket,percent,D,false,EA,money_market,true
+EA_OIS_12M,ecb,MMSR/B.U2._X._Z.S1ZV._Z.O._X.WR._X.FH._Z._Z.EUR._Z,Euro OIS 12M,ECB MMSR weighted average rate on euro overnight index swaps in the twelve month bucket,percent,D,false,EA,money_market,true
+EA_OIS_2Y,ecb,MMSR/B.U2._X._Z.S1ZV._Z.O._X.WR._X.FI._Z._Z.EUR._Z,Euro OIS 2Y,ECB MMSR weighted average rate on euro overnight index swaps in the two year bucket,percent,D,false,EA,money_market,true
+ECBWATCH_PROBS,ecbwatch,,ecb-watch Implied Rate Probabilities,Third-party market-implied ECB policy rate probabilities decomposed into 25bp steps from dated €STR futures,percent,D,false,EA,expectation,true
